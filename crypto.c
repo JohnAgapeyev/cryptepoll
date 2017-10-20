@@ -1,6 +1,7 @@
 #include <openssl/conf.h>
 #include <openssl/evp.h>
 #include <openssl/err.h>
+#include <openssl/rand.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -35,17 +36,8 @@ void cleanupCrypto(void) {
 }
 
 void fillRandom(unsigned char *buf, size_t n) {
-    int urandom;
-    if ((urandom = open("/dev/urandom", O_RDONLY)) == -1) {
-        fatal_error("Open urandom");
-    }
-    ssize_t r;
-    if ((r = read(urandom, buf, n)) == -1) {
-        fatal_error("read urandom");
-    }
-    if ((size_t) r != n) {
-        fprintf(stderr, "Failed to read %zu bytes from /dev/urandom", n);
-        exit(EXIT_FAILURE);
+    if (RAND_bytes(buf, n) == 0) {
+        libcrypto_error();
     }
 }
 
