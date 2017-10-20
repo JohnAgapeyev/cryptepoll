@@ -1,12 +1,14 @@
 CC=gcc
-CFLAGS=-Wall -Wextra -std=c11 -pedantic -D_POSIX_C_SOURCE=200809L -O3 -march=native -flto
+BASEFLAGS=-Wall -Wextra -std=c11 -pedantic -D_POSIX_C_SOURCE=200809L
+DEBUGFLAGS=-ggdb -Og
+RELEASEFLAGS=-O3 -march=native -flto
 CLIBS=-pthread -lcrypto
 EXEC=cryptepoll.elf
 DEPS=$(EXEC).d
 SRCWILD=$(wildcard *.c)
 HEADWILD=$(wildcard *.h)
 
-all: $(patsubst %.c, %.o, $(SRCWILD))
+all release debug: $(patsubst %.c, %.o, $(SRCWILD))
 	$(CC) $(CFLAGS) $^ $(CLIBS) -o $(EXEC)
 
 %.o: %.c
@@ -17,6 +19,12 @@ $(DEPS): $(SRCWILD) $(HEADWILD)
 
 ifneq ($(MAKECMDGOALS), clean)
 -include $(DEPS)
+endif
+
+ifeq (,$(filter debug, $(MAKECMDGOALS)))
+$(eval CFLAGS := $(BASEFLAGS) $(RELEASEFLAGS))
+else
+$(eval CFLAGS := $(BASEFLAGS) $(DEBUGFLAGS))
 endif
 
 .PHONY: clean
