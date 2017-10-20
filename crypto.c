@@ -1,6 +1,9 @@
 #include <openssl/conf.h>
 #include <openssl/evp.h>
 #include <openssl/err.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include "crypto.h"
 #include "macro.h"
 
@@ -30,3 +33,19 @@ void cleanupCrypto(void) {
     // Remove error strings
     ERR_free_strings();
 }
+
+void fillRandom(unsigned char *buf, size_t n) {
+    int urandom;
+    if ((urandom = open("/dev/urandom", O_RDONLY)) == -1) {
+        fatal_error("Open urandom");
+    }
+    ssize_t r;
+    if ((r = read(urandom, buf, n)) == -1) {
+        fatal_error("read urandom");
+    }
+    if ((size_t) r != n) {
+        fprintf(stderr, "Failed to read %zu bytes from /dev/urandom", n);
+        exit(EXIT_FAILURE);
+    }
+}
+
