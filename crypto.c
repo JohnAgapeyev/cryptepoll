@@ -2,6 +2,7 @@
 #include <openssl/evp.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>
+#include <openssl/ec.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -39,5 +40,56 @@ void fillRandom(unsigned char *buf, size_t n) {
     if (RAND_bytes(buf, n) == 0) {
         libcrypto_error();
     }
+}
+
+EVP_PKEY *generateSigningKey(void) {
+    EVP_PKEY_CTX *pctx;
+    if ((pctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL)) == 0) {
+        libcrypto_error();
+    }
+
+    if (EVP_PKEY_paramgen_init(pctx) == 0) {
+        libcrypto_error();
+    }
+
+    int curveNID = OBJ_sn2nid(SN_secp521r1);
+    if (curveNID == NID_undef) {
+        libcrypto_error();
+    }
+
+    if (EVP_PKEY_CTX_set_ec_paramgen_curve_nid(pctx, curveNID) == 0) {
+        libcrypto_error();
+    }
+
+    EVP_PKEY *params = EVP_PKEY_new();
+
+    if (EVP_PKEY_paramgen(pctx, &params) == 0) {
+        libcrypto_error();
+    }
+
+    EVP_PKEY_CTX *kctx;
+    if ((kctx = EVP_PKEY_CTX_new(params, NULL)) == 0) {
+        libcrypto_error();
+    }
+
+    if (EVP_PKEY_keygen_init(kctx) == 0) {
+        libcrypto_error();
+    }
+
+    EVP_PKEY *key = EVP_PKEY_new();
+
+    if (EVP_PKEY_keygen(kctx, &key) == 0) {
+        libcrypto_error();
+    }
+
+    EVP_PKEY_CTX_free(pctx);
+    EVP_PKEY_CTX_free(kctx);
+    EVP_PKEY_free(params);
+
+    return key;
+}
+
+void SecureFree(void *addr, size_t n) {
+    OPENSSL_clear_free(addr, n);
 }
 

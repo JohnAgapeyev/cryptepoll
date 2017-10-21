@@ -4,8 +4,12 @@
 int main(void) {
     initCrypto();
 
-    unsigned char buffer[4096];
-    fillRandom(buffer, 4096);
+    EVP_PKEY *key = generateSigningKey();
+
+    EVP_PKEY_free(key);
+
+    //unsigned char buffer[4096];
+    //fillRandom(buffer, 4096);
 
     cleanupCrypto();
     return EXIT_SUCCESS;
