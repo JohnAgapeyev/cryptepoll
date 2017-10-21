@@ -37,50 +37,36 @@ void cleanupCrypto(void) {
 }
 
 void fillRandom(unsigned char *buf, size_t n) {
-    if (RAND_bytes(buf, n) == 0) {
-        libcrypto_error();
-    }
+    checkCryptoAPICall(RAND_bytes(buf, n));
 }
 
 EVP_PKEY *generateSigningKey(void) {
     EVP_PKEY_CTX *pctx;
-    if ((pctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL)) == 0) {
+
+    checkCryptoAPICall((pctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL)));
+
+    checkCryptoAPICall(EVP_PKEY_paramgen_init(pctx));
+
+    int curveNID;
+    if ((curveNID = OBJ_sn2nid(SN_secp521r1)) == NID_undef) {
         libcrypto_error();
     }
 
-    if (EVP_PKEY_paramgen_init(pctx) == 0) {
-        libcrypto_error();
-    }
-
-    int curveNID = OBJ_sn2nid(SN_secp521r1);
-    if (curveNID == NID_undef) {
-        libcrypto_error();
-    }
-
-    if (EVP_PKEY_CTX_set_ec_paramgen_curve_nid(pctx, curveNID) == 0) {
-        libcrypto_error();
-    }
+    checkCryptoAPICall(EVP_PKEY_CTX_set_ec_paramgen_curve_nid(pctx, curveNID));
 
     EVP_PKEY *params = EVP_PKEY_new();
 
-    if (EVP_PKEY_paramgen(pctx, &params) == 0) {
-        libcrypto_error();
-    }
+    checkCryptoAPICall(EVP_PKEY_paramgen(pctx, &params));
 
     EVP_PKEY_CTX *kctx;
-    if ((kctx = EVP_PKEY_CTX_new(params, NULL)) == 0) {
-        libcrypto_error();
-    }
 
-    if (EVP_PKEY_keygen_init(kctx) == 0) {
-        libcrypto_error();
-    }
+    checkCryptoAPICall((kctx = EVP_PKEY_CTX_new(params, NULL)));
+
+    checkCryptoAPICall(EVP_PKEY_keygen_init(kctx) );
 
     EVP_PKEY *key = EVP_PKEY_new();
 
-    if (EVP_PKEY_keygen(kctx, &key) == 0) {
-        libcrypto_error();
-    }
+    checkCryptoAPICall(EVP_PKEY_keygen(kctx, &key));
 
     EVP_PKEY_CTX_free(pctx);
     EVP_PKEY_CTX_free(kctx);
