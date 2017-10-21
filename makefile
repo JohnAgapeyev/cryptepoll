@@ -1,7 +1,7 @@
 CC=gcc
 BASEFLAGS=-Wall -Wextra -std=c11 -pedantic -D_POSIX_C_SOURCE=200809L
-DEBUGFLAGS=-ggdb -Og
-RELEASEFLAGS=-O3 -march=native -flto
+DEBUGFLAGS=-ggdb -O0
+RELEASEFLAGS=-O3 -march=native -flto -DNDEBUG
 CLIBS=-pthread -lcrypto
 EXEC=cryptepoll.elf
 DEPS=$(EXEC).d
