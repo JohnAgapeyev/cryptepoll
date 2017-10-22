@@ -225,3 +225,53 @@ bool verifyHMAC(const unsigned char *mesg, size_t mlen, const unsigned char *hma
     return result;
 }
 
+size_t encrypt(const unsigned char *plaintext, size_t plaintextlen, const unsigned char *key, const unsigned char *iv, unsigned char *ciphertext) {
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    if (ctx == NULL) {
+        libcrypto_error();
+    }
+
+    checkCryptoAPICall(EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv));
+
+    int len;
+
+    checkCryptoAPICall(EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintextlen));
+
+    int ciphertextlen = len;
+
+    checkCryptoAPICall(EVP_EncryptFinal_ex(ctx, ciphertext + len, &len));
+
+    ciphertextlen += len;
+
+    EVP_CIPHER_CTX_free(ctx);
+
+    assert(ciphertextlen >= 0);
+
+    return ciphertextlen;
+}
+
+size_t decrypt(const unsigned char *ciphertext, size_t ciphertextlen, const unsigned char *key, const unsigned char *iv, unsigned char *plaintext) {
+    EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    if (ctx == NULL) {
+        libcrypto_error();
+    }
+
+    checkCryptoAPICall(EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv));
+
+    int len;
+
+    checkCryptoAPICall(EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertextlen));
+
+    int plaintextlen = len;
+
+    checkCryptoAPICall(EVP_DecryptFinal_ex(ctx, plaintext + len, &len));
+
+    plaintextlen += len;
+
+    EVP_CIPHER_CTX_free(ctx);
+
+    assert(plaintextlen >= 0);
+
+    return plaintextlen;
+}
+

@@ -40,27 +40,40 @@
 int main(void) {
     initCrypto();
 
-    EVP_PKEY *key = generateSigningKey();
-
     unsigned char *hmac = NULL;
     size_t hmaclen = 0;
 
-    const char *testString = "This is a test";
-    const size_t testStringLen = strlen(testString);
+    const unsigned char *testString = (unsigned char *) "This is a test";
+    const size_t testStringLen = strlen((const char *) testString);
 
-    unsigned char testStringBuffer[20];
-    strcpy((char *) testStringBuffer, testString);
+    unsigned char testKey[32];
+    unsigned char testIV[16];
 
-    generateHMAC(testStringBuffer, testStringLen, &hmac, &hmaclen, key);
+    fillRandom(testKey, 32);
+    fillRandom(testIV, 16);
 
-    if (verifyHMAC(testStringBuffer, testStringLen, hmac, hmaclen, key)) {
+    unsigned char ciphertxt[128];
+
+    size_t cipherLen = encrypt(testString, testStringLen, testKey, testIV, ciphertxt);
+
+    unsigned char plaintext[128];
+
+    size_t plainLen = decrypt(ciphertxt, cipherLen, testKey, testIV, plaintext);
+
+    plaintext[plainLen] = '\0';
+
+    printf("Cipher length: %zu\nPlain length: %zu\nPlainText: %s\n", cipherLen, plainLen, plaintext);
+
+    EVP_PKEY *signKey = generateSigningKey();
+    generateHMAC(testString, testStringLen, &hmac, &hmaclen, signKey);
+    if (verifyHMAC(testString, testStringLen, hmac, hmaclen, signKey)) {
         puts("HMAC validated successfully");
     } else {
         puts("HMAC failed validation");
     }
     OPENSSL_free(hmac);
 
-    EVP_PKEY_free(key);
+    EVP_PKEY_free(signKey);
 
     unsigned char buffer[4096];
     fillRandom(buffer, 4096);
