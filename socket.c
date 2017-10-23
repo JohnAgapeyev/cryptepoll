@@ -41,6 +41,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <errno.h>
+#include <assert.h>
 #include "socket.h"
 #include "macro.h"
 
@@ -111,5 +113,27 @@ int establishConnection(const char *address, const char *port) {
 
     freeaddrinfo(result);
     return sock;
+}
+
+void readAll(const int sock, unsigned char *buf, size_t bufsize) {
+    for (;;) {
+        const int n = recv(sock, buf, bufsize, 0);
+        if (n == -1) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                //Nonblocking read and no more data so do nothing
+            } else {
+                perror("Socket read");
+                close(sock);
+            }
+            return;
+        }
+        if (n == 0) {
+            //No more data to read, so do nothing
+            return;
+        }
+        assert(n <= bufsize);
+        bufsize -= n;
+        buf += n;
+    }
 }
 
