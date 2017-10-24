@@ -35,49 +35,56 @@
  */
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 #include "crypto.h"
+#include "main.h"
+
+const unsigned char *testString = (unsigned char *) "This is a test";
+const size_t testStringLen = 14;
 
 int main(void) {
     initCrypto();
 
-    unsigned char *hmac = NULL;
-    size_t hmaclen = 0;
+    assert(testEncryptDecrypt());
+    assert(testHMAC());
 
-    const unsigned char *testString = (unsigned char *) "This is a test";
-    const size_t testStringLen = strlen((const char *) testString);
+    cleanupCrypto();
+    return EXIT_SUCCESS;
+}
 
+bool testEncryptDecrypt(void) {
     unsigned char testKey[32];
     unsigned char testIV[16];
 
     fillRandom(testKey, 32);
     fillRandom(testIV, 16);
 
-    unsigned char ciphertxt[128];
+    unsigned char ciphertxt[testStringLen + 16];
 
     size_t cipherLen = encrypt(testString, testStringLen, testKey, testIV, ciphertxt);
 
-    unsigned char plaintext[128];
+    unsigned char plaintext[testStringLen];
 
     size_t plainLen = decrypt(ciphertxt, cipherLen, testKey, testIV, plaintext);
 
     plaintext[plainLen] = '\0';
 
-    printf("Cipher length: %zu\nPlain length: %zu\nPlainText: %s\n", cipherLen, plainLen, plaintext);
+    return strcmp((char *) plaintext, (char *) testString) == 0;
+}
 
-    EVP_PKEY *signKey = generateSigningKey();
+bool testHMAC(void) {
+    unsigned char *hmac = NULL;
+    size_t hmaclen = 0;
+
+    EVP_PKEY *signKey = generateECKey();
     generateHMAC(testString, testStringLen, &hmac, &hmaclen, signKey);
-    if (verifyHMAC(testString, testStringLen, hmac, hmaclen, signKey)) {
-        puts("HMAC validated successfully");
-    } else {
-        puts("HMAC failed validation");
-    }
+
+    bool rtn = verifyHMAC(testString, testStringLen, hmac, hmaclen, signKey);
+
     OPENSSL_free(hmac);
 
     EVP_PKEY_free(signKey);
 
-    unsigned char buffer[4096];
-    fillRandom(buffer, 4096);
-
-    cleanupCrypto();
-    return EXIT_SUCCESS;
+    return rtn;
 }
+

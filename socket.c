@@ -131,7 +131,7 @@ void readAll(const int sock, unsigned char *buf, size_t bufsize) {
             //No more data to read, so do nothing
             return;
         }
-        assert(n <= bufsize);
+        assert((size_t) n <= bufsize);
         bufsize -= n;
         buf += n;
     }

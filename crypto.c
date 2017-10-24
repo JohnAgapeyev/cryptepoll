@@ -81,7 +81,7 @@ void SecureFree(void *addr, size_t n) {
     OPENSSL_clear_free(addr, n);
 }
 
-EVP_PKEY *generateSigningKey(void) {
+EVP_PKEY *generateECKey(void) {
     EVP_PKEY_CTX *pctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL);
     if (pctx == NULL) {
         libcrypto_error();
