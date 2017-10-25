@@ -78,10 +78,6 @@ void fillRandom(unsigned char *buf, size_t n) {
     checkCryptoAPICall(RAND_bytes(buf, n));
 }
 
-void SecureFree(void *addr, size_t n) {
-    OPENSSL_clear_free(addr, n);
-}
-
 EVP_PKEY *generateECKey(void) {
     EVP_PKEY_CTX *pctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL);
     if (pctx == NULL) {

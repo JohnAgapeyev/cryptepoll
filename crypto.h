@@ -60,7 +60,6 @@ void generateHMAC(const unsigned char *mesg, size_t mlen, unsigned char **hmac, 
 bool verifyHMAC(const unsigned char *mesg, size_t mlen, const unsigned char *hmac, size_t hmaclen, EVP_PKEY *key);
 size_t encrypt(const unsigned char *plaintext, size_t plaintextlen, const unsigned char *key, const unsigned char *iv, unsigned char *ciphertext);
 size_t decrypt(const unsigned char *ciphertext, size_t ciphertextlen, const unsigned char *key, const unsigned char *iv, unsigned char *plaintext);
-void SecureFree(void *addr, size_t n);
 unsigned char *getPublicKey(EVP_PKEY *pkey, size_t *keyLen);
 EVP_PKEY *setPublicKey(const unsigned char *newPublic, size_t len);
 unsigned char *getSharedSecret(EVP_PKEY *keypair, EVP_PKEY *clientPublicKey);
