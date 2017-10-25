@@ -33,6 +33,7 @@
  ***
  *
  */
+#include <openssl/crypto.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -47,6 +48,8 @@ int main(void) {
 
     assert(testEncryptDecrypt());
     assert(testHMAC());
+    assert(testECDH());
+    assert(testGetSetKey());
 
     cleanupCrypto();
     return EXIT_SUCCESS;
@@ -88,3 +91,50 @@ bool testHMAC(void) {
     return rtn;
 }
 
+bool testECDH(void) {
+    EVP_PKEY *firstKey = generateECKey();
+    EVP_PKEY *secondKey = generateECKey();
+
+    unsigned char *symKey = getSharedSecret(firstKey, secondKey);
+    unsigned char testIV[16];
+
+    fillRandom(testIV, 16);
+
+    unsigned char ciphertxt[testStringLen + 16];
+
+    size_t cipherLen = encrypt(testString, testStringLen, symKey, testIV, ciphertxt);
+
+    unsigned char plaintext[testStringLen];
+
+    size_t plainLen = decrypt(ciphertxt, cipherLen, symKey, testIV, plaintext);
+
+    plaintext[plainLen] = '\0';
+
+    EVP_PKEY_free(firstKey);
+    EVP_PKEY_free(secondKey);
+
+    OPENSSL_clear_free(symKey, EVP_MD_size(EVP_sha256()));
+
+    return strcmp((char *) plaintext, (char *) testString) == 0;
+}
+
+bool testGetSetKey(void) {
+    EVP_PKEY *origKey = generateECKey();
+
+    size_t pubKeyLen;
+    unsigned char *pub = getPublicKey(origKey, &pubKeyLen);
+
+    EVP_PKEY *keyPairWithoutPrivate = setPublicKey(pub, pubKeyLen);
+
+    size_t againLen;
+    unsigned char *pubAgain = getPublicKey(keyPairWithoutPrivate, &againLen);
+
+    bool rtn = (pubKeyLen == againLen && strncmp((char *) pub, (char *) pubAgain, pubKeyLen) == 0);
+
+    EVP_PKEY_free(origKey);
+    EVP_PKEY_free(keyPairWithoutPrivate);
+    OPENSSL_free(pub);
+    OPENSSL_free(pubAgain);
+
+    return rtn;
+}

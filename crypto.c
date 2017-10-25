@@ -38,6 +38,7 @@
 #include <openssl/err.h>
 #include <openssl/rand.h>
 #include <openssl/ec.h>
+#include <openssl/pem.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -273,5 +274,78 @@ size_t decrypt(const unsigned char *ciphertext, size_t ciphertextlen, const unsi
     assert(plaintextlen >= 0);
 
     return plaintextlen;
+}
+
+unsigned char *getPublicKey(EVP_PKEY *pkey, size_t *keyLen) {
+    unsigned char *out = NULL;
+    int len = i2d_PUBKEY(pkey, &out);
+    if (len < 0) {
+        libcrypto_error();
+    }
+    *keyLen = len;
+    assert(len != 0);
+    return out;
+}
+
+EVP_PKEY *setPublicKey(const unsigned char *newPublic, size_t len) {
+    EVP_PKEY *tmp = EVP_PKEY_new();
+    if (tmp == NULL) {
+        libcrypto_error();
+    }
+    //EVP_PKEY *out = d2i_PUBKEY(&tmp, &newPublic, len);
+    EVP_PKEY *out = d2i_PUBKEY(NULL, &newPublic, len);
+    if (out == NULL) {
+        libcrypto_error();
+    }
+    EVP_PKEY_free(tmp);
+    return out;
+}
+
+unsigned char *getSharedSecret(EVP_PKEY *keypair, EVP_PKEY *clientPublicKey) {
+    EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new(keypair, NULL);
+    if (ctx == NULL) {
+        libcrypto_error();
+    }
+
+    unsigned char *secretKey;
+    size_t keyLen;
+
+    checkCryptoAPICall(EVP_PKEY_derive_init(ctx));
+
+    checkCryptoAPICall(EVP_PKEY_derive_set_peer(ctx, clientPublicKey));
+
+    checkCryptoAPICall(EVP_PKEY_derive(ctx, NULL, &keyLen));
+
+    secretKey = OPENSSL_malloc(keyLen);
+    if (secretKey == NULL) {
+        libcrypto_error();
+    }
+
+    checkCryptoAPICall(EVP_PKEY_derive(ctx, secretKey, &keyLen));
+
+    EVP_MD_CTX *mdctx = EVP_MD_CTX_create();
+    if (mdctx == NULL) {
+        libcrypto_error();
+    }
+
+    checkCryptoAPICall(EVP_DigestInit_ex(mdctx, EVP_sha256(), NULL));
+
+    checkCryptoAPICall(EVP_DigestUpdate(mdctx, secretKey, keyLen));
+
+    unsigned char *hashedSecret = OPENSSL_malloc(EVP_MD_size(EVP_sha256()));
+    if (hashedSecret == NULL) {
+        libcrypto_error();
+    }
+
+    unsigned int hashLen;
+    checkCryptoAPICall(EVP_DigestFinal_ex(mdctx, hashedSecret, &hashLen));
+
+    assert(hashLen == (unsigned int) EVP_MD_size(EVP_sha256()));
+
+    EVP_PKEY_CTX_free(ctx);
+    OPENSSL_clear_free(secretKey, keyLen);
+    EVP_MD_CTX_destroy(mdctx);
+
+    return hashedSecret;
 }
 
