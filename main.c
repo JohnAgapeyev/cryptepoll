@@ -43,6 +43,9 @@
 const unsigned char *testString = (unsigned char *) "This is a test";
 const size_t testStringLen = 14;
 
+#define THREAD_COUNT 8
+#define TASK_COUNT 1000
+
 int main(void) {
     initCrypto();
 
@@ -50,6 +53,16 @@ int main(void) {
     assert(testHMAC());
     assert(testECDH());
     assert(testGetSetKey());
+
+    pthread_t threads[THREAD_COUNT];
+
+    for (int i = 0; i < THREAD_COUNT; ++i) {
+        pthread_create(threads + i, NULL, threadRoutine, NULL);
+    }
+
+    for (int i = 0; i < THREAD_COUNT; ++i) {
+        pthread_join(threads[i], NULL);
+    }
 
     cleanupCrypto();
     return EXIT_SUCCESS;
@@ -138,3 +151,14 @@ bool testGetSetKey(void) {
 
     return rtn;
 }
+
+void *threadRoutine(void *arg) {
+    for (int i = 0; i < TASK_COUNT; ++i) {
+        testEncryptDecrypt();
+        testHMAC();
+        testECDH();
+        testGetSetKey();
+    }
+    return arg;
+}
+
