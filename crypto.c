@@ -284,16 +284,10 @@ unsigned char *getPublicKey(EVP_PKEY *pkey, size_t *keyLen) {
 }
 
 EVP_PKEY *setPublicKey(const unsigned char *newPublic, size_t len) {
-    EVP_PKEY *tmp = EVP_PKEY_new();
-    if (tmp == NULL) {
-        libcrypto_error();
-    }
-    //EVP_PKEY *out = d2i_PUBKEY(&tmp, &newPublic, len);
     EVP_PKEY *out = d2i_PUBKEY(NULL, &newPublic, len);
     if (out == NULL) {
         libcrypto_error();
     }
-    EVP_PKEY_free(tmp);
     return out;
 }
 

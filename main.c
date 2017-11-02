@@ -98,7 +98,6 @@ bool testHMAC(void) {
     bool rtn = verifyHMAC(testString, testStringLen, hmac, hmaclen, signKey);
 
     OPENSSL_free(hmac);
-
     EVP_PKEY_free(signKey);
 
     return rtn;
@@ -109,6 +108,7 @@ bool testECDH(void) {
     EVP_PKEY *secondKey = generateECKey();
 
     unsigned char *symKey = getSharedSecret(firstKey, secondKey);
+    assert(symKey = getSharedSecret(secondKey, firstKey));
     unsigned char testIV[16];
 
     fillRandom(testIV, 16);
