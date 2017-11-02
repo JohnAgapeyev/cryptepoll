@@ -39,6 +39,7 @@
 #define fatal_error(mesg) \
     do {\
         perror(mesg);\
+        fprintf(stderr, "%s, line %d in function %s\n", __FILE__, __LINE__, __func__); \
         exit(EXIT_FAILURE);\
     } while(0);
 

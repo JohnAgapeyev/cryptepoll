@@ -115,7 +115,8 @@ int establishConnection(const char *address, const char *port) {
     return sock;
 }
 
-void readAll(const int sock, unsigned char *buf, size_t bufsize) {
+size_t readNBytes(const int sock, unsigned char *buf, size_t bufsize) {
+    const size_t origBufSize = bufsize;
     for (;;) {
         const int n = recv(sock, buf, bufsize, 0);
         if (n == -1) {
@@ -125,15 +126,16 @@ void readAll(const int sock, unsigned char *buf, size_t bufsize) {
                 perror("Socket read");
                 close(sock);
             }
-            return;
+            return origBufSize - bufsize;
         }
         if (n == 0) {
             //No more data to read, so do nothing
-            return;
+            return origBufSize - bufsize;
         }
         assert((size_t) n <= bufsize);
         bufsize -= n;
         buf += n;
     }
+    return origBufSize - bufsize;
 }
 

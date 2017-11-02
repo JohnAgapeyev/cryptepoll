@@ -37,6 +37,7 @@
 #define CRYPTO_H
 
 #include <openssl/evp.h>
+#include <openssl/err.h>
 #include <stdbool.h>
 
 #define libcrypto_error() \
@@ -63,5 +64,6 @@ size_t decrypt(const unsigned char *ciphertext, size_t ciphertextlen, const unsi
 unsigned char *getPublicKey(EVP_PKEY *pkey, size_t *keyLen);
 EVP_PKEY *setPublicKey(const unsigned char *newPublic, size_t len);
 unsigned char *getSharedSecret(EVP_PKEY *keypair, EVP_PKEY *clientPublicKey);
+EVP_PKEY *allocateKeyPair(void);
 
 #endif

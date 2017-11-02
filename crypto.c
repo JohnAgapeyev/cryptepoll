@@ -93,10 +93,7 @@ EVP_PKEY *generateECKey(void) {
 
     checkCryptoAPICall(EVP_PKEY_CTX_set_ec_paramgen_curve_nid(pctx, curveNID));
 
-    EVP_PKEY *params = EVP_PKEY_new();
-    if (params == NULL) {
-        libcrypto_error();
-    }
+    EVP_PKEY *params = allocateKeyPair();
 
     checkCryptoAPICall(EVP_PKEY_paramgen(pctx, &params));
 
@@ -107,7 +104,7 @@ EVP_PKEY *generateECKey(void) {
 
     checkCryptoAPICall(EVP_PKEY_keygen_init(kctx) );
 
-    EVP_PKEY *key = EVP_PKEY_new();
+    EVP_PKEY *key = allocateKeyPair();
 
     checkCryptoAPICall(EVP_PKEY_keygen(kctx, &key));
 
@@ -339,3 +336,10 @@ unsigned char *getSharedSecret(EVP_PKEY *keypair, EVP_PKEY *clientPublicKey) {
     return hashedSecret;
 }
 
+EVP_PKEY *allocateKeyPair(void) {
+    EVP_PKEY *out = EVP_PKEY_new();
+    if (out == NULL) {
+        libcrypto_error();
+    }
+    return out;
+}
