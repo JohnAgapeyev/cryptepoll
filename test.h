@@ -33,9 +33,11 @@
  ***
  *
  */
+#ifndef TEST_H
+#define TEST_H
 
-#ifndef MAIN_H
-#define MAIN_H
+#include <stdbool.h>
 
+void performTests(void);
 
 #endif
