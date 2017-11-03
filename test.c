@@ -74,13 +74,13 @@ void performTests(void) {
 }
 
 bool testEncryptDecrypt(void) {
-    unsigned char testKey[32];
-    unsigned char testIV[16];
+    unsigned char testKey[SYMMETRIC_KEY_SIZE];
+    unsigned char testIV[IV_SIZE];
 
-    fillRandom(testKey, 32);
-    fillRandom(testIV, 16);
+    fillRandom(testKey, SYMMETRIC_KEY_SIZE);
+    fillRandom(testIV, IV_SIZE);
 
-    unsigned char ciphertxt[testStringLen + 16];
+    unsigned char ciphertxt[testStringLen + IV_SIZE];
 
     size_t cipherLen = encrypt(testString, testStringLen, testKey, testIV, ciphertxt);
 
@@ -114,11 +114,11 @@ bool testECDH(void) {
 
     unsigned char *symKey = getSharedSecret(firstKey, secondKey);
     assert(symKey = getSharedSecret(secondKey, firstKey));
-    unsigned char testIV[16];
+    unsigned char testIV[IV_SIZE];
 
-    fillRandom(testIV, 16);
+    fillRandom(testIV, IV_SIZE);
 
-    unsigned char ciphertxt[testStringLen + 16];
+    unsigned char ciphertxt[testStringLen + IV_SIZE];
 
     size_t cipherLen = encrypt(testString, testStringLen, symKey, testIV, ciphertxt);
 

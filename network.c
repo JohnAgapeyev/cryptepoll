@@ -33,6 +33,7 @@
  ***
  *
  */
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <errno.h>
@@ -46,21 +47,26 @@
 #include "macro.h"
 
 EVP_PKEY *LongTermSigningKey = NULL;
-EVP_PKEY *PeerSigningKey = NULL;
 bool isServer;
+struct client *clientList;
+atomic_size_t clientCount;
 
 void network_init(void) {
     initCrypto();
     LongTermSigningKey = generateECKey();
+    clientList = calloc(10, sizeof(struct client));
 }
 
 void network_cleanup(void) {
     if (LongTermSigningKey) {
         EVP_PKEY_free(LongTermSigningKey);
     }
-    if (PeerSigningKey) {
-        EVP_PKEY_free(PeerSigningKey);
+    const size_t clientCount = atomic_load(&clientCount);
+    for (size_t i = 0; i< clientCount; ++i) {
+        OPENSSL_clear_free(clientList[i].sharedKey, SYMMETRIC_KEY_SIZE);
+        EVP_PKEY_free(clientList[i].signingKey);
     }
+    free(clientList);
     cleanupCrypto();
 }
 
@@ -82,7 +88,7 @@ void process_packet(const char * const buffer, const size_t bufsize) {
  * Client signing key
  * Client public key + hmac
  */
-unsigned char *exchangeKeys(const int sock) {
+unsigned char *exchangeKeys(const int * const sock) {
     size_t pubKeyLen;
     unsigned char *signPubKey = getPublicKey(LongTermSigningKey, &pubKeyLen);
 
@@ -96,8 +102,10 @@ unsigned char *exchangeKeys(const int sock) {
 
     unsigned char *sharedSecret = NULL;
 
+    struct client *clientEntry = container_entry(sock, struct client, socket);
+
     if (isServer) {
-        sendKey(sock, signPubKey, pubKeyLen);
+        sendKey(*sock, signPubKey, pubKeyLen);
 
         unsigned char *mesgBuffer = malloc(ephemeralPubKeyLen + hmaclen);
         if (mesgBuffer == NULL) {
@@ -105,15 +113,15 @@ unsigned char *exchangeKeys(const int sock) {
         }
         memcpy(mesgBuffer, ephemeralKey, ephemeralPubKeyLen);
         memcpy(mesgBuffer + ephemeralPubKeyLen, hmac, hmaclen);
-        sendKey(sock, mesgBuffer, ephemeralPubKeyLen + hmaclen);
+        sendKey(*sock, mesgBuffer, ephemeralPubKeyLen + hmaclen);
 
         mesgBuffer = realloc(mesgBuffer, pubKeyLen);
         if (mesgBuffer == NULL) {
             fatal_error("realloc");
         }
-        size_t n = readNBytes(sock, mesgBuffer, pubKeyLen);
+        size_t n = readNBytes(*sock, mesgBuffer, pubKeyLen);
 
-        PeerSigningKey = setPublicKey(mesgBuffer, n);
+        clientEntry->signingKey = setPublicKey(mesgBuffer, n);
 
         if (!receiveAndVerifyKey(sock, mesgBuffer, ephemeralPubKeyLen + hmaclen, ephemeralPubKeyLen, hmaclen)) {
             fatal_error("HMAC verification");
@@ -130,9 +138,9 @@ unsigned char *exchangeKeys(const int sock) {
         if (mesgBuffer == NULL) {
             fatal_error("malloc");
         }
-        size_t n = readNBytes(sock, mesgBuffer, pubKeyLen);
+        size_t n = readNBytes(*sock, mesgBuffer, pubKeyLen);
 
-        PeerSigningKey = setPublicKey(mesgBuffer, n);
+        clientEntry->signingKey = setPublicKey(mesgBuffer, n);
 
         mesgBuffer = realloc(mesgBuffer, ephemeralPubKeyLen + hmaclen);
         if (mesgBuffer == NULL) {
@@ -145,11 +153,11 @@ unsigned char *exchangeKeys(const int sock) {
 
         EVP_PKEY *serverPubKey = setPublicKey(mesgBuffer, ephemeralPubKeyLen);
 
-        sendKey(sock, signPubKey, pubKeyLen);
+        sendKey(*sock, signPubKey, pubKeyLen);
 
         memcpy(mesgBuffer, ephemeralKey, ephemeralPubKeyLen);
         memcpy(mesgBuffer + ephemeralPubKeyLen, hmac, hmaclen);
-        sendKey(sock, mesgBuffer, ephemeralPubKeyLen + hmaclen);
+        sendKey(*sock, mesgBuffer, ephemeralPubKeyLen + hmaclen);
 
         sharedSecret = getSharedSecret(ephemeralKey, serverPubKey);
 
@@ -161,6 +169,8 @@ unsigned char *exchangeKeys(const int sock) {
     OPENSSL_free(ephemeralPubKey);
     OPENSSL_free(hmac);
     EVP_PKEY_free(ephemeralKey);
+
+    clientEntry->sharedKey = sharedSecret;
 
     return sharedSecret;
 }
@@ -177,13 +187,15 @@ sendKey:
     }
 }
 
-bool receiveAndVerifyKey(const int sock, unsigned char *buffer, const size_t bufSize, const size_t keyLen, const size_t hmacLen) {
+bool receiveAndVerifyKey(const int * const sock, unsigned char *buffer, const size_t bufSize, const size_t keyLen, const size_t hmacLen) {
     assert(bufSize >= keyLen + hmacLen);
-    readNBytes(sock, buffer, bufSize);
+    readNBytes(*sock, buffer, bufSize);
 
     EVP_PKEY *serverPubKey = setPublicKey(buffer, keyLen);
 
-    bool rtn = verifyHMAC(buffer, keyLen, buffer + keyLen, hmacLen, PeerSigningKey);
+    struct client *entry = container_entry(sock, struct client, socket);
+
+    bool rtn = verifyHMAC(buffer, keyLen, buffer + keyLen, hmacLen, entry->signingKey);
 
     EVP_PKEY_free(serverPubKey);
     return rtn;

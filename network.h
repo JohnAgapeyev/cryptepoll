@@ -37,13 +37,25 @@
 #define NETWORK_H
 
 #include <stdlib.h>
+#include <stdatomic.h>
 #include <openssl/evp.h>
+
+struct client {
+    int socket;
+    unsigned char *sharedKey;
+    EVP_PKEY *signingKey;
+};
+
+extern bool isServer;
+extern EVP_PKEY *LongTermSigningKey;
+extern struct client *clientList;
+extern atomic_size_t clientCount;
 
 void network_init(void);
 void network_cleanup(void);
 void process_packet(const char * const buffer, const size_t bufsize);
-unsigned char *exchangeKeys(const int sock);
+unsigned char *exchangeKeys(const int * const sock);
 void sendKey(const int sock, const unsigned char *buffer, const size_t bufSize);
-bool receiveAndVerifyKey(const int sock, unsigned char *buffer, const size_t bufSize, const size_t keyLen, const size_t hmacLen);
+bool receiveAndVerifyKey(const int * const sock, unsigned char *buffer, const size_t bufSize, const size_t keyLen, const size_t hmacLen);
 
 #endif

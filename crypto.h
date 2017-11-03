@@ -53,6 +53,9 @@
         }\
     } while(0)
 
+#define SYMMETRIC_KEY_SIZE 32
+#define IV_SIZE 16
+
 void initCrypto(void);
 void cleanupCrypto(void);
 void fillRandom(unsigned char *buf, size_t n);

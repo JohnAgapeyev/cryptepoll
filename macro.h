@@ -36,11 +36,16 @@
 #ifndef MACRO_H
 #define MACRO_H
 
+#include <stddef.h>
+
 #define fatal_error(mesg) \
     do {\
         perror(mesg);\
         fprintf(stderr, "%s, line %d in function %s\n", __FILE__, __LINE__, __func__); \
         exit(EXIT_FAILURE);\
-    } while(0);
+    } while(0)
+
+#define container_entry(ptr, type, member)\
+    ((type *)((char *)(1 ? (ptr) : &((type *)0)->member) - offsetof(type, member)))
 
 #endif
