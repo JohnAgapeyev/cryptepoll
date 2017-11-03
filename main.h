@@ -37,5 +37,6 @@
 #ifndef MAIN_H
 #define MAIN_H
 
+char *getUserInput(const char *prompt);
 
 #endif

@@ -34,15 +34,111 @@
  *
  */
 #include <stdlib.h>
+#include <stdbool.h>
+#include <errno.h>
+#include <unistd.h>
+#include <string.h>
+#include <ctype.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
 #include "main.h"
 #include "test.h"
+#include "socket.h"
+#include "network.h"
 
-int main(void) {
+int main(int argc, char **argv) {
 #ifndef NDEBUG
     performTests();
 #else
     //Do nothing at the moment
 #endif
+
+    int option;
+    bool isClient; //Temp bool used to check if both client and server is chosen
+
+    const char *portString = NULL;
+
+    while ((option = getopt(argc, argv, "csp:")) != -1) {
+        switch (option) {
+            case 'c':
+                isClient = true;
+                isServer = false;
+                break;
+            case 's':
+                isServer = true;
+                break;
+            case 'p':
+                portString = optarg;
+                break;
+        }
+    }
+    if (isClient == isServer) {
+        puts("This program must be run with either the -c or -s flag, but not both.");
+        puts("Please re-run this program with one of the above flags.");
+        puts("-c represents client mode, -s represents server mode");
+        return EXIT_SUCCESS;
+    }
+
+    if (portString == NULL) {
+        puts("No port set, reverting to port 1337");
+        portString = "1337";
+    }
+
+    port = htons(strtoul(portString, NULL, 0));
+    if (errno == EINVAL || errno == ERANGE) {
+        perror("strtoul");
+        return EXIT_FAILURE;
+    }
+
+    if (isServer) {
+        int listenSocket = createSocket(AF_INET, SOCK_STREAM, 0);
+        bindSocket(listenSocket, port);
+        listen(listenSocket, 5);
+        startServer(listenSocket);
+        close(listenSocket);
+    } else {
+        startClient();
+    }
+
     return EXIT_SUCCESS;
 }
 
+#define MAX_USER_BUFFER 1024
+
+char *getUserInput(const char *prompt) {
+    char *buffer = calloc(MAX_USER_BUFFER, sizeof(char));
+    if (buffer == NULL) {
+        perror("Allocation failure");
+        abort();
+    }
+    printf("%s", prompt);
+    int c;
+    for (;;) {
+        c = getchar();
+        if (c == EOF) {
+            break;
+        }
+        if (!isspace(c)) {
+            ungetc(c, stdin);
+            break;
+        }
+    }
+    size_t n = 0;
+    for (;;) {
+        c = getchar();
+        if (c == EOF || (isspace(c) && c != ' ')) {
+            buffer[n] = '\0';
+            break;
+        }
+        buffer[n] = c;
+        if (n == MAX_USER_BUFFER - 1) {
+            printf("Message too big\n");
+            memset(buffer, 0, MAX_USER_BUFFER);
+            while ((c = getchar()) != '\n' && c != EOF) {}
+            n = 0;
+            continue;
+        }
+        ++n;
+    }
+    return buffer;
+}

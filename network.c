@@ -33,7 +33,7 @@
  ***
  *
  */
-#include <stdatomic.h>
+#include <pthread.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <errno.h>
@@ -41,31 +41,38 @@
 #include <assert.h>
 #include <openssl/evp.h>
 #include <sys/socket.h>
+#include <arpa/inet.h>
 #include "network.h"
+#include "epoll.h"
 #include "socket.h"
 #include "crypto.h"
 #include "macro.h"
+#include "main.h"
 
 EVP_PKEY *LongTermSigningKey = NULL;
 bool isServer;
 struct client *clientList;
-atomic_size_t clientCount;
+size_t clientCount;
+unsigned short port;
+pthread_mutex_t clientLock;
 
 void network_init(void) {
     initCrypto();
     LongTermSigningKey = generateECKey();
     clientList = calloc(10, sizeof(struct client));
+    clientCount = 0;
+    pthread_mutex_init(&clientLock, NULL);
 }
 
 void network_cleanup(void) {
     if (LongTermSigningKey) {
         EVP_PKEY_free(LongTermSigningKey);
     }
-    const size_t clientCount = atomic_load(&clientCount);
     for (size_t i = 0; i< clientCount; ++i) {
         OPENSSL_clear_free(clientList[i].sharedKey, SYMMETRIC_KEY_SIZE);
         EVP_PKEY_free(clientList[i].signingKey);
     }
+    pthread_mutex_destroy(&clientLock);
     free(clientList);
     cleanupCrypto();
 }
@@ -201,3 +208,62 @@ bool receiveAndVerifyKey(const int * const sock, unsigned char *buffer, const si
     return rtn;
 }
 
+void startClient() {
+    network_init();
+    char *address = getUserInput("Enter the server's address: ");
+    char *portString = calloc(10, sizeof(char));
+    sprintf(portString, "%d", (unsigned short) ntohs(port));
+
+    int serverSock = establishConnection(address, portString);
+    if (serverSock == -1) {
+        fprintf(stderr, "Unable to connect to server\n");
+        goto clientCleanup;
+    }
+
+    size_t clientEntry = addClient(serverSock);
+
+    const int *sock = &clientList[clientEntry].socket;
+    //Do more stuff
+
+clientCleanup:
+    free(address);
+    free(portString);
+    network_cleanup();
+}
+
+void startServer(const int listenSock) {
+    network_init();
+    //Do stuff here
+    network_cleanup();
+}
+
+size_t addClient(int sock) {
+    pthread_mutex_lock(&clientLock);
+    bool foundEntry = false;
+    for (size_t i = 0; i < clientCount; ++i) {
+        if (clientList[i].enabled == false) {
+            initClientStruct(clientList + i, sock);
+            ++clientCount;
+            foundEntry = true;
+            break;
+        }
+    }
+    if (!foundEntry) {
+        clientList = realloc(clientList, sizeof(struct client) * clientCount * 2);
+        if (clientList == NULL) {
+            fatal_error("realloc");
+        }
+        memset(clientList + clientCount, 0, sizeof(struct client) * clientCount);
+        initClientStruct(clientList + clientCount, sock);
+        ++clientCount;
+    }
+    pthread_mutex_unlock(&clientLock);
+    return clientCount;
+}
+
+void initClientStruct(struct client *newClient, int sock) {
+    newClient->socket = sock;
+    newClient->sharedKey = NULL;
+    newClient->signingKey = NULL;
+    newClient->enabled = true;
+}
