@@ -159,6 +159,7 @@ unsigned char *exchangeKeys(const int sock) {
 
     OPENSSL_free(signPubKey);
     OPENSSL_free(ephemeralPubKey);
+    OPENSSL_free(hmac);
     EVP_PKEY_free(ephemeralKey);
 
     return sharedSecret;
