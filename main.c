@@ -91,11 +91,11 @@ int main(int argc, char **argv) {
     }
 
     if (isServer) {
-        int listenSocket = createSocket(AF_INET, SOCK_STREAM, 0);
-        bindSocket(listenSocket, port);
-        listen(listenSocket, 5);
-        startServer(listenSocket);
-        close(listenSocket);
+        listenSock = createSocket(AF_INET, SOCK_STREAM, 0);
+        bindSocket(listenSock, port);
+        listen(listenSock, 5);
+        startServer();
+        close(listenSock);
     } else {
         startClient();
     }

@@ -51,16 +51,18 @@ extern EVP_PKEY *LongTermSigningKey;
 extern struct client *clientList;
 extern size_t clientCount;
 extern unsigned short port;
+extern int listenSock;
 
 void network_init(void);
 void network_cleanup(void);
-void process_packet(const char * const buffer, const size_t bufsize);
+void process_packet(const unsigned char * const buffer, const size_t bufsize);
 unsigned char *exchangeKeys(const int * const sock);
 void sendKey(const int sock, const unsigned char *buffer, const size_t bufSize);
 bool receiveAndVerifyKey(const int * const sock, unsigned char *buffer, const size_t bufSize, const size_t keyLen, const size_t hmacLen);
-void startClient();
-void startServer(const int listenSock);
+void startClient(void);
+void startServer(void);
 size_t addClient(int sock);
 void initClientStruct(struct client *newClient, int sock);
+void *eventLoop(void *epollfd);
 
 #endif

@@ -39,8 +39,10 @@
 #include <errno.h>
 #include <string.h>
 #include <assert.h>
+#include <unistd.h>
 #include <openssl/evp.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <arpa/inet.h>
 #include "network.h"
 #include "epoll.h"
@@ -54,6 +56,7 @@ bool isServer;
 struct client *clientList;
 size_t clientCount;
 unsigned short port;
+int listenSock;
 pthread_mutex_t clientLock;
 
 void network_init(void) {
@@ -81,7 +84,7 @@ void network_cleanup(void) {
  * Does nothing intentionally.
  * This is to be replaced by the application's desired behaviour
  */
-void process_packet(const char * const buffer, const size_t bufsize) {
+void process_packet(const unsigned char * const buffer, const size_t bufsize) {
     (void)(buffer);
     (void)(bufsize);
 #ifndef NDEBUG
@@ -208,7 +211,7 @@ bool receiveAndVerifyKey(const int * const sock, unsigned char *buffer, const si
     return rtn;
 }
 
-void startClient() {
+void startClient(void) {
     network_init();
     char *address = getUserInput("Enter the server's address: ");
     char *portString = calloc(10, sizeof(char));
@@ -220,10 +223,20 @@ void startClient() {
         goto clientCleanup;
     }
 
-    size_t clientEntry = addClient(serverSock);
+    size_t clientNum = addClient(serverSock);
 
-    const int *sock = &clientList[clientEntry].socket;
+    struct client *serverEntry = &clientList[clientNum];
     //Do more stuff
+
+    int epollfd = createEpollFd();
+
+    struct epoll_event ev;
+    ev.events = EPOLLIN | EPOLLET | EPOLLEXCLUSIVE;
+    ev.data.ptr = serverEntry;
+
+    addEpollSocket(epollfd, serverSock, &ev);
+
+    eventLoop(&epollfd);
 
 clientCleanup:
     free(address);
@@ -231,10 +244,104 @@ clientCleanup:
     network_cleanup();
 }
 
-void startServer(const int listenSock) {
+void startServer(void) {
     network_init();
     //Do stuff here
+
+    int epollfd = createEpollFd();
+
+    struct epoll_event ev;
+    ev.events = EPOLLIN | EPOLLET | EPOLLEXCLUSIVE;
+    ev.data.ptr = NULL;
+
+    addEpollSocket(epollfd, listenSock, &ev);
+
+    //TODO: Create threads here instead of calling eventloop directly
+    eventLoop(&epollfd);
+
     network_cleanup();
+}
+
+void *eventLoop(void *epollfd) {
+    int efd = *((int *)epollfd);
+
+    struct epoll_event *eventList = calloc(MAX_EPOLL_EVENTS, sizeof(struct epoll_event));
+    if (eventList == NULL) {
+        fatal_error("calloc");
+    }
+
+    //TODO: Change infinite loop to use condition that changes on user exit
+    while (true) {
+        int n = waitForEpollEvent(efd, eventList);
+        if (n == -1) {
+            perror("epoll_wait");
+            break;
+        }
+        for (int i = 0; i < n; ++i) {
+            if (eventList[i].events & EPOLLERR) {
+                if (eventList[i].data.ptr) {
+                    int sock = ((struct client *) eventList[i].data.ptr)->socket;
+                    fprintf(stderr, "Socket error on socket %d\n", sock);
+                    close(sock);
+                } else {
+                    fprintf(stderr, "Socket error on socket %d\n", listenSock);
+                    close(listenSock);
+                }
+            } else if (eventList[i].events & EPOLLHUP) {
+                if (eventList[i].data.ptr) {
+                    int sock = ((struct client *) eventList[i].data.ptr)->socket;
+                    fprintf(stderr, "Socket %d closed\n", sock);
+                    close(sock);
+                } else {
+                    fprintf(stderr, "Socket %d closed\n", listenSock);
+                    close(listenSock);
+                }
+            } else if (eventList[i].events & EPOLLIN) {
+                if (eventList[i].data.ptr) {
+                    //Regular read connection
+                    int sock = ((struct client *) eventList[i].data.ptr)->socket;
+
+                    int sizeToRead;
+                    if (ioctl(sock, FIONREAD, &sizeToRead) == -1) {
+                        fatal_error("ioctl");
+                    }
+                    //Ensure base-level buffer size
+                    if (sizeToRead < 1024) {
+                        sizeToRead = 1024;
+                    }
+
+                    //Double the given size to hopefully catch all the data at once
+                    unsigned char *buffer = malloc(2 * sizeToRead);
+
+                    int numRead;
+                    while ((numRead = readNBytes(sock, buffer, 2 * sizeToRead)) > 0) {
+                        process_packet(buffer, numRead);
+                    }
+                } else {
+                    //Null data pointer means listen socket has incoming connection
+                    for(;;) {
+                        int sock = accept(listenSock, NULL, NULL);
+                        if (sock == -1) {
+                            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                                //No incoming connections, ignore the error
+                                break;
+                            } else {
+                                fatal_error("accept");
+                            }
+                        }
+                        size_t newClientIndex = addClient(sock);
+
+                        struct epoll_event ev;
+                        ev.events = EPOLLIN | EPOLLET | EPOLLEXCLUSIVE;
+                        ev.data.ptr = &clientList[newClientIndex];
+
+                        addEpollSocket(efd, sock, &ev);
+                    }
+                }
+            }
+        }
+    }
+    return NULL;
 }
 
 size_t addClient(int sock) {
