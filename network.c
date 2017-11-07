@@ -63,7 +63,7 @@ void network_init(void) {
     initCrypto();
     LongTermSigningKey = generateECKey();
     clientList = calloc(10, sizeof(struct client));
-    clientCount = 0;
+    clientCount = 1;
     pthread_mutex_init(&clientLock, NULL);
 }
 
@@ -89,6 +89,7 @@ void process_packet(const unsigned char * const buffer, const size_t bufsize) {
     (void)(bufsize);
 #ifndef NDEBUG
     fprintf(stderr, "Processing packet\n");
+    fprintf(stderr, "Processing packet of size %zu with contents %s\n", bufsize, buffer);
 #endif
 }
 
@@ -106,7 +107,7 @@ unsigned char *exchangeKeys(const int * const sock) {
     size_t ephemeralPubKeyLen;
     unsigned char *ephemeralPubKey = getPublicKey(ephemeralKey, &ephemeralPubKeyLen);
 
-    unsigned char *hmac;
+    unsigned char *hmac = NULL;
     size_t hmaclen;
     generateHMAC(ephemeralPubKey, ephemeralPubKeyLen, &hmac, &hmaclen, LongTermSigningKey);
 
@@ -215,7 +216,7 @@ void startClient(void) {
     network_init();
     char *address = getUserInput("Enter the server's address: ");
     char *portString = calloc(10, sizeof(char));
-    sprintf(portString, "%d", (unsigned short) ntohs(port));
+    sprintf(portString, "%d", (unsigned short) (port));
 
     int serverSock = establishConnection(address, portString);
     if (serverSock == -1) {
@@ -226,7 +227,8 @@ void startClient(void) {
     size_t clientNum = addClient(serverSock);
 
     struct client *serverEntry = &clientList[clientNum];
-    //Do more stuff
+
+    //unsigned char *secretKey = exchangeKeys(&serverEntry->socket);
 
     int epollfd = createEpollFd();
 
@@ -236,7 +238,16 @@ void startClient(void) {
 
     addEpollSocket(epollfd, serverSock, &ev);
 
-    eventLoop(&epollfd);
+    pthread_t readThread;
+    pthread_create(&readThread, NULL, eventLoop, &epollfd);
+
+    //eventLoop(&epollfd);
+
+    while(true) {
+        char *result = getUserInput("Enter your message: ");
+        send(serverSock, result, strlen(result), 0);
+        free(result);
+    }
 
 clientCleanup:
     free(address);
@@ -246,13 +257,14 @@ clientCleanup:
 
 void startServer(void) {
     network_init();
-    //Do stuff here
 
     int epollfd = createEpollFd();
 
     struct epoll_event ev;
     ev.events = EPOLLIN | EPOLLET | EPOLLEXCLUSIVE;
     ev.data.ptr = NULL;
+
+    setNonBlocking(listenSock);
 
     addEpollSocket(epollfd, listenSock, &ev);
 
@@ -329,7 +341,14 @@ void *eventLoop(void *epollfd) {
                                 fatal_error("accept");
                             }
                         }
+
+                        setNonBlocking(sock);
+
                         size_t newClientIndex = addClient(sock);
+
+                        //unsigned char *secretKey = exchangeKeys(&clientList[newClientIndex].socket);
+
+                        //Add keys to client struct here
 
                         struct epoll_event ev;
                         ev.events = EPOLLIN | EPOLLET | EPOLLEXCLUSIVE;
@@ -365,7 +384,8 @@ size_t addClient(int sock) {
         ++clientCount;
     }
     pthread_mutex_unlock(&clientLock);
-    return clientCount;
+    //Subtract 2: 1 for incremented client count, 1 for dummy value
+    return clientCount - 2;
 }
 
 void initClientStruct(struct client *newClient, int sock) {

@@ -44,6 +44,7 @@
 #include <unistd.h>
 #include <stdbool.h>
 #include <assert.h>
+#include <string.h>
 #include "crypto.h"
 #include "macro.h"
 
@@ -86,12 +87,7 @@ EVP_PKEY *generateECKey(void) {
 
     checkCryptoAPICall(EVP_PKEY_paramgen_init(pctx));
 
-    int curveNID;
-    if ((curveNID = OBJ_sn2nid(SN_secp521r1)) == NID_undef) {
-        libcrypto_error();
-    }
-
-    checkCryptoAPICall(EVP_PKEY_CTX_set_ec_paramgen_curve_nid(pctx, curveNID));
+    checkCryptoAPICall(EVP_PKEY_CTX_set_ec_paramgen_curve_nid(pctx, NID_secp521r1));
 
     EVP_PKEY *params = allocateKeyPair();
 
@@ -270,22 +266,80 @@ size_t decrypt(const unsigned char *ciphertext, size_t ciphertextlen, const unsi
 }
 
 unsigned char *getPublicKey(EVP_PKEY *pkey, size_t *keyLen) {
+#if 0
     unsigned char *out = NULL;
-    int len = i2d_PUBKEY(pkey, &out);
+    int len = i2d_PublicKey(pkey, &out);
     if (len < 0) {
         libcrypto_error();
     }
     *keyLen = len;
     assert(len != 0);
     return out;
+#else
+    EC_KEY *eck = EVP_PKEY_get1_EC_KEY(pkey);
+    if (eck == NULL) {
+        libcrypto_error();
+    }
+    const EC_POINT *ecp = EC_KEY_get0_public_key(eck);
+    if (ecp == NULL) {
+        libcrypto_error();
+    }
+    BN_CTX *bnctx = BN_CTX_new();
+    if (bnctx == NULL) {
+        libcrypto_error();
+    }
+    EC_GROUP *ecg = EC_GROUP_new_by_curve_name(NID_secp521r1);
+    if (ecg == NULL) {
+        libcrypto_error();
+    }
+    size_t requiredLen = EC_POINT_point2oct(ecg, ecp, EC_GROUP_get_point_conversion_form(ecg), NULL, 0, bnctx);
+
+    unsigned char *rtn = OPENSSL_malloc(requiredLen);
+
+    *keyLen = EC_POINT_point2oct(ecg, ecp, EC_GROUP_get_point_conversion_form(ecg), rtn, requiredLen, bnctx);
+
+    BN_CTX_free(bnctx);
+    return  rtn;
+#endif
 }
 
 EVP_PKEY *setPublicKey(const unsigned char *newPublic, size_t len) {
-    EVP_PKEY *out = d2i_PUBKEY(NULL, &newPublic, len);
+#if 0
+    EVP_PKEY *out = d2i_PUBKEY(NULL,  &newPublic, len);
     if (out == NULL) {
         libcrypto_error();
     }
     return out;
+#else
+    BN_CTX *bnctx = BN_CTX_new();
+    if (bnctx == NULL) {
+        libcrypto_error();
+    }
+    EC_GROUP *ecg = EC_GROUP_new_by_curve_name(NID_secp521r1);
+    if (ecg == NULL) {
+        libcrypto_error();
+    }
+    EC_POINT *ecp = EC_POINT_new(ecg);
+    if (ecp == NULL) {
+        libcrypto_error();
+    }
+
+    printf("%zu\n", len);
+
+    checkCryptoAPICall(EC_POINT_oct2point(ecg, ecp, newPublic, len, bnctx));
+
+    //EC_KEY *eck = EC_KEY_new();
+    EC_KEY *eck = EC_KEY_new_by_curve_name(NID_secp521r1);
+    if (eck == NULL) {
+        libcrypto_error();
+    }
+    checkCryptoAPICall(EC_KEY_set_public_key(eck, ecp));
+
+    EVP_PKEY *rtn = allocateKeyPair();
+    checkCryptoAPICall(EVP_PKEY_set1_EC_KEY(rtn, eck));
+
+    return rtn;
+#endif
 }
 
 unsigned char *getSharedSecret(EVP_PKEY *keypair, EVP_PKEY *clientPublicKey) {

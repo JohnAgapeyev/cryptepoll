@@ -50,7 +50,7 @@ const unsigned char *testString = (unsigned char *) "This is a test";
 const size_t testStringLen = 14;
 
 #define THREAD_COUNT 8
-#define TASK_COUNT 1000
+#define TASK_COUNT 100
 
 void performTests(void) {
     initCrypto();

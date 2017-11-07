@@ -42,7 +42,7 @@
 
 #define libcrypto_error() \
     do {\
-        fprintf(stderr, "Libcrypto error code %lu at %s, line %d in function %s\n", ERR_get_error(), __FILE__, __LINE__, __func__); \
+        fprintf(stderr, "Libcrypto error %s at %s, line %d in function %s\n", ERR_error_string(ERR_get_error(), NULL), __FILE__, __LINE__, __func__); \
         exit(EXIT_FAILURE);\
     } while(0)
 

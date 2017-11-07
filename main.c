@@ -48,13 +48,15 @@
 
 int main(int argc, char **argv) {
 #ifndef NDEBUG
-    performTests();
+    //performTests();
+    //return EXIT_SUCCESS;
 #else
     //Do nothing at the moment
 #endif
 
     int option;
-    bool isClient; //Temp bool used to check if both client and server is chosen
+    bool isClient = false; //Temp bool used to check if both client and server is chosen
+    isServer = false;
 
     const char *portString = NULL;
 
@@ -84,7 +86,8 @@ int main(int argc, char **argv) {
         portString = "1337";
     }
 
-    port = htons(strtoul(portString, NULL, 0));
+    //port = htons(strtoul(portString, NULL, 0));
+    port = (strtoul(portString, NULL, 0));
     if (errno == EINVAL || errno == ERANGE) {
         perror("strtoul");
         return EXIT_FAILURE;
