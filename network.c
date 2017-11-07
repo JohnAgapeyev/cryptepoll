@@ -224,6 +224,8 @@ void startClient(void) {
         goto clientCleanup;
     }
 
+    setNonBlocking(serverSock);
+
     size_t clientNum = addClient(serverSock);
 
     struct client *serverEntry = &clientList[clientNum];
@@ -328,6 +330,9 @@ void *eventLoop(void *epollfd) {
                     int numRead;
                     while ((numRead = readNBytes(sock, buffer, 2 * sizeToRead)) > 0) {
                         process_packet(buffer, numRead);
+                        if (isServer) {
+                            send(sock, buffer, numRead, 0);
+                        }
                     }
                 } else {
                     //Null data pointer means listen socket has incoming connection
