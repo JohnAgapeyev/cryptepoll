@@ -39,6 +39,7 @@
 #include <openssl/rand.h>
 #include <openssl/ec.h>
 #include <openssl/pem.h>
+#include <openssl/hmac.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -111,106 +112,66 @@ EVP_PKEY *generateECKey(void) {
     return key;
 }
 
-void generateHMAC(const unsigned char *mesg, size_t mlen, unsigned char **hmac, size_t *hmaclen, EVP_PKEY *key) {
-    if (!mesg || !mlen || !hmac || !key) {
-        fprintf(stderr, "Tried to hmac with invalid values.\nMesg: %p\nmlen: %zu\nHMAC: %p\nKey: %p\n", (void *) mesg, mlen, (void *) hmac, (void *) key);
-        exit(EXIT_FAILURE);
-    }
-    if (*hmac) {
-        OPENSSL_free(*hmac);
-    }
-    *hmac = NULL;
-    *hmaclen = 0;
+unsigned char *generateHMAC_PKEY(const unsigned char *mesg, size_t mlen, size_t *hmaclen, EVP_PKEY *key) {
+    size_t pubKeyLen;
+    unsigned char *pubKey = getPublicKey(key, &pubKeyLen);
 
-    EVP_MD_CTX *mdctx = EVP_MD_CTX_create();
-    if (mdctx == NULL) {
-        libcrypto_error();
-    }
+    unsigned char *out = generateHMAC_Buffer(mesg, mlen, hmaclen, pubKey, pubKeyLen);
 
-    const EVP_MD *md = EVP_get_digestbyname("SHA256");
-    if (md == NULL) {
-        libcrypto_error();
-    }
+    OPENSSL_free(pubKey);
 
-    checkCryptoAPICall(EVP_DigestInit_ex(mdctx, md, NULL));
-
-    checkCryptoAPICall(EVP_DigestSignInit(mdctx, NULL, md, NULL, key));
-
-    checkCryptoAPICall(EVP_DigestSignUpdate(mdctx, mesg, mlen));
-
-    size_t requiredLen;
-    checkCryptoAPICall(EVP_DigestSignFinal(mdctx, NULL, &requiredLen));
-
-    if (requiredLen <= 0) {
-        fprintf(stderr, "Required HMAC buffer length is not greater than zero\n");
-        exit(EXIT_FAILURE);
-    }
-
-    *hmac = OPENSSL_malloc(requiredLen);
-    if (*hmac == NULL) {
-        libcrypto_error();
-    }
-    *hmaclen = requiredLen;
-
-    checkCryptoAPICall(EVP_DigestSignFinal(mdctx, *hmac, hmaclen));
-
-    if (requiredLen < *hmaclen) {
-        fprintf(stderr, "Outputted HMAC length is greater than required length for HMAC\n");
-        exit(EXIT_FAILURE);
-    }
-
-    EVP_MD_CTX_destroy(mdctx);
+    return out;
 }
 
-bool verifyHMAC(const unsigned char *mesg, size_t mlen, const unsigned char *hmac, size_t hmaclen, EVP_PKEY *key) {
+unsigned char *generateHMAC_Buffer(const unsigned char *mesg, size_t mlen, size_t *hmaclen, unsigned char *key, size_t keyLen) {
+    if (!mesg || !mlen || !hmaclen || !key) {
+        fprintf(stderr, "Tried to hmac with invalid values.\nMesg: %p\nmlen: %zu\nHMAC: %p\nKey: %p\n", (void *) mesg, mlen, (void *) hmaclen, (void *) key);
+        exit(EXIT_FAILURE);
+    }
+    unsigned char *out = OPENSSL_malloc(EVP_MAX_MD_SIZE);
+    if (out == NULL) {
+        libcrypto_error();
+    }
+
+    unsigned char *rtn = HMAC(EVP_sha256(), key, keyLen, mesg, mlen, out, (unsigned int *) hmaclen);
+    if (rtn == NULL) {
+        libcrypto_error();
+    }
+    assert(rtn == out);
+
+    return out;
+}
+
+bool verifyHMAC_PKEY(const unsigned char *mesg, size_t mlen, const unsigned char *hmac, size_t hmaclen, EVP_PKEY *key) {
     if (!mesg || !mlen || !hmac || !key) {
         fprintf(stderr, "Tried to validate hmac with invalid values.\nMesg: %p\nmlen: %zu\nHMAC: %p\nKey: %p\n", (void *) mesg, mlen, (void *) hmac, (void *) key);
         exit(EXIT_FAILURE);
     }
 
-    EVP_MD_CTX *mdctx = EVP_MD_CTX_create();
-    if (mdctx == NULL) {
-        libcrypto_error();
-    }
+    size_t genHmacLen = 0;
+    unsigned char *genHmac = generateHMAC_PKEY(mesg, mlen, &genHmacLen, key);
 
-    const EVP_MD *md = EVP_get_digestbyname("SHA256");
-    if (md == NULL) {
-        libcrypto_error();
-    }
+    const size_t len = (hmaclen < genHmacLen) ? hmaclen : genHmacLen;
+    bool result = (CRYPTO_memcmp(hmac, genHmac, len) == 0);
 
-    checkCryptoAPICall(EVP_DigestInit_ex(mdctx, md, NULL));
+    OPENSSL_free(genHmac);
 
-    checkCryptoAPICall(EVP_DigestSignInit(mdctx, NULL, md, NULL, key));
+    return result;
+}
 
-    checkCryptoAPICall(EVP_DigestSignUpdate(mdctx, mesg, mlen));
-
-    size_t requiredLen;
-    checkCryptoAPICall(EVP_DigestSignFinal(mdctx, NULL, &requiredLen));
-
-    if (requiredLen <= 0) {
-        fprintf(stderr, "Required HMAC buffer length is not greater than zero\n");
+bool verifyHMAC_Buffer(const unsigned char *mesg, size_t mlen, const unsigned char *hmac, size_t hmaclen, unsigned char *key, size_t keyLen) {
+    if (!mesg || !mlen || !hmac || !key) {
+        fprintf(stderr, "Tried to validate hmac with invalid values.\nMesg: %p\nmlen: %zu\nHMAC: %p\nKey: %p\n", (void *) mesg, mlen, (void *) hmac, (void *) key);
         exit(EXIT_FAILURE);
     }
 
-    unsigned char buffer[requiredLen];
-    size_t bufsize = requiredLen;
+    size_t genHmacLen = 0;
+    unsigned char *genHmac = generateHMAC_Buffer(mesg, mlen, &genHmacLen, key, keyLen);
 
-    checkCryptoAPICall(EVP_DigestSignFinal(mdctx, buffer, &bufsize));
+    const size_t len = (hmaclen < genHmacLen) ? hmaclen : genHmacLen;
+    bool result = (CRYPTO_memcmp(hmac, genHmac, len) == 0);
 
-    if (bufsize <= 0) {
-        fprintf(stderr, "Generated HMAC buffer length is not greater than zero\n");
-        exit(EXIT_FAILURE);
-    }
-
-    if (requiredLen < bufsize) {
-        fprintf(stderr, "Outputted HMAC length is greater than required length for HMAC\n");
-        exit(EXIT_FAILURE);
-    }
-
-    const size_t len = (hmaclen < bufsize) ? hmaclen : bufsize;
-    bool result = CRYPTO_memcmp(hmac, buffer, len);
-
-    EVP_MD_CTX_destroy(mdctx);
+    OPENSSL_free(genHmac);
 
     return result;
 }
@@ -266,16 +227,6 @@ size_t decrypt(const unsigned char *ciphertext, size_t ciphertextlen, const unsi
 }
 
 unsigned char *getPublicKey(EVP_PKEY *pkey, size_t *keyLen) {
-#if 0
-    unsigned char *out = NULL;
-    int len = i2d_PublicKey(pkey, &out);
-    if (len < 0) {
-        libcrypto_error();
-    }
-    *keyLen = len;
-    assert(len != 0);
-    return out;
-#else
     EC_KEY *eck = EVP_PKEY_get1_EC_KEY(pkey);
     if (eck == NULL) {
         libcrypto_error();
@@ -293,24 +244,27 @@ unsigned char *getPublicKey(EVP_PKEY *pkey, size_t *keyLen) {
         libcrypto_error();
     }
     size_t requiredLen = EC_POINT_point2oct(ecg, ecp, EC_GROUP_get_point_conversion_form(ecg), NULL, 0, bnctx);
+    if (requiredLen == 0) {
+        libcrypto_error();
+    }
 
     unsigned char *rtn = OPENSSL_malloc(requiredLen);
+    if (rtn == NULL) {
+        libcrypto_error();
+    }
 
     *keyLen = EC_POINT_point2oct(ecg, ecp, EC_GROUP_get_point_conversion_form(ecg), rtn, requiredLen, bnctx);
+    if (*keyLen == 0) {
+        libcrypto_error();
+    }
 
+    EC_GROUP_free(ecg);
+    EC_KEY_free(eck);
     BN_CTX_free(bnctx);
     return  rtn;
-#endif
 }
 
 EVP_PKEY *setPublicKey(const unsigned char *newPublic, size_t len) {
-#if 0
-    EVP_PKEY *out = d2i_PUBKEY(NULL,  &newPublic, len);
-    if (out == NULL) {
-        libcrypto_error();
-    }
-    return out;
-#else
     BN_CTX *bnctx = BN_CTX_new();
     if (bnctx == NULL) {
         libcrypto_error();
@@ -324,11 +278,8 @@ EVP_PKEY *setPublicKey(const unsigned char *newPublic, size_t len) {
         libcrypto_error();
     }
 
-    printf("%zu\n", len);
-
     checkCryptoAPICall(EC_POINT_oct2point(ecg, ecp, newPublic, len, bnctx));
 
-    //EC_KEY *eck = EC_KEY_new();
     EC_KEY *eck = EC_KEY_new_by_curve_name(NID_secp521r1);
     if (eck == NULL) {
         libcrypto_error();
@@ -338,8 +289,12 @@ EVP_PKEY *setPublicKey(const unsigned char *newPublic, size_t len) {
     EVP_PKEY *rtn = allocateKeyPair();
     checkCryptoAPICall(EVP_PKEY_set1_EC_KEY(rtn, eck));
 
+    EC_KEY_free(eck);
+    EC_POINT_free(ecp);
+    EC_GROUP_free(ecg);
+    BN_CTX_free(bnctx);
+
     return rtn;
-#endif
 }
 
 unsigned char *getSharedSecret(EVP_PKEY *keypair, EVP_PKEY *clientPublicKey) {
@@ -383,9 +338,9 @@ unsigned char *getSharedSecret(EVP_PKEY *keypair, EVP_PKEY *clientPublicKey) {
 
     assert(hashLen == (unsigned int) EVP_MD_size(EVP_sha256()));
 
-    EVP_PKEY_CTX_free(ctx);
-    OPENSSL_clear_free(secretKey, keyLen);
     EVP_MD_CTX_destroy(mdctx);
+    OPENSSL_clear_free(secretKey, keyLen);
+    EVP_PKEY_CTX_free(ctx);
 
     return hashedSecret;
 }

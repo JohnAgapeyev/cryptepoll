@@ -45,6 +45,7 @@ static bool testHMAC(void);
 static bool testECDH(void);
 static bool testGetSetKey(void);
 static void *threadRoutine(void *arg);
+static bool testKeyHMAC(void);
 
 const unsigned char *testString = (unsigned char *) "This is a test";
 const size_t testStringLen = 14;
@@ -59,7 +60,9 @@ void performTests(void) {
     assert(testHMAC());
     assert(testECDH());
     assert(testGetSetKey());
+    assert(testKeyHMAC());
 
+#if 1
     pthread_t threads[THREAD_COUNT];
 
     for (int i = 0; i < THREAD_COUNT; ++i) {
@@ -69,6 +72,7 @@ void performTests(void) {
     for (int i = 0; i < THREAD_COUNT; ++i) {
         pthread_join(threads[i], NULL);
     }
+#endif
 
     cleanupCrypto();
 }
@@ -94,15 +98,33 @@ bool testEncryptDecrypt(void) {
 }
 
 bool testHMAC(void) {
-    unsigned char *hmac = NULL;
-    size_t hmaclen = 0;
-
     EVP_PKEY *signKey = generateECKey();
-    generateHMAC(testString, testStringLen, &hmac, &hmaclen, signKey);
 
-    bool rtn = verifyHMAC(testString, testStringLen, hmac, hmaclen, signKey);
+    size_t hmaclen = 0;
+    unsigned char *hmac = generateHMAC_PKEY(testString, testStringLen, &hmaclen, signKey);
+
+    size_t refLen = 0;
+    unsigned char *refVal = generateHMAC_PKEY(testString, testStringLen, &refLen, signKey);
+
+#if 0
+    for (size_t i = 0; i < hmaclen; ++i) {
+        printf("%02x", hmac[i]);
+    }
+    printf("\n");
+
+    for (size_t i = 0; i < refLen; ++i) {
+        printf("%02x", refVal[i]);
+    }
+    printf("\n");
+#endif
+
+    assert(refLen == hmaclen);
+    assert(memcmp(hmac, refVal,  refLen) == 0);
+
+    bool rtn = verifyHMAC_PKEY(testString, testStringLen, hmac, hmaclen, signKey);
 
     OPENSSL_free(hmac);
+    OPENSSL_free(refVal);
     EVP_PKEY_free(signKey);
 
     return rtn;
@@ -113,7 +135,7 @@ bool testECDH(void) {
     EVP_PKEY *secondKey = generateECKey();
 
     unsigned char *symKey = getSharedSecret(firstKey, secondKey);
-    assert(symKey = getSharedSecret(secondKey, firstKey));
+
     unsigned char testIV[IV_SIZE];
 
     fillRandom(testIV, IV_SIZE);
@@ -131,7 +153,7 @@ bool testECDH(void) {
     EVP_PKEY_free(firstKey);
     EVP_PKEY_free(secondKey);
 
-    OPENSSL_clear_free(symKey, EVP_MD_size(EVP_sha256()));
+    OPENSSL_clear_free(symKey, EVP_MAX_MD_SIZE);
 
     return strcmp((char *) plaintext, (char *) testString) == 0;
 }
@@ -157,12 +179,39 @@ bool testGetSetKey(void) {
     return rtn;
 }
 
+bool testKeyHMAC(void) {
+    EVP_PKEY *firstKey = generateECKey();
+    EVP_PKEY *secondKey = generateECKey();
+
+    size_t secondPubKeyLen;
+    unsigned char *secondPubKey = getPublicKey(secondKey, &secondPubKeyLen);
+
+    size_t hmacLen = 0;
+    unsigned char *hmac = generateHMAC_PKEY(secondPubKey, secondPubKeyLen, &hmacLen, firstKey);
+
+    unsigned char *mesgBuffer = malloc(secondPubKeyLen + hmacLen);
+    memcpy(mesgBuffer, secondPubKey, secondPubKeyLen);
+    memcpy(mesgBuffer + secondPubKeyLen, hmac, hmacLen);
+
+    bool rtn =  verifyHMAC_PKEY(mesgBuffer, secondPubKeyLen, mesgBuffer + secondPubKeyLen, hmacLen, firstKey);
+
+    free(mesgBuffer);
+    OPENSSL_free(hmac);
+    OPENSSL_free(secondPubKey);
+
+    EVP_PKEY_free(firstKey);
+    EVP_PKEY_free(secondKey);
+
+    return rtn;
+}
+
 void *threadRoutine(void *arg) {
     for (int i = 0; i < TASK_COUNT; ++i) {
         testEncryptDecrypt();
         testHMAC();
         testECDH();
         testGetSetKey();
+        testKeyHMAC();
     }
     return arg;
 }

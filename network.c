@@ -122,7 +122,7 @@ unsigned char *exchangeKeys(const int * const sock) {
         if (mesgBuffer == NULL) {
             fatal_error("malloc");
         }
-        memcpy(mesgBuffer, ephemeralKey, ephemeralPubKeyLen);
+        memcpy(mesgBuffer, ephemeralPubKey, ephemeralPubKeyLen);
         memcpy(mesgBuffer + ephemeralPubKeyLen, hmac, hmaclen);
         sendKey(*sock, mesgBuffer, ephemeralPubKeyLen + hmaclen);
 
@@ -166,7 +166,7 @@ unsigned char *exchangeKeys(const int * const sock) {
 
         sendKey(*sock, signPubKey, pubKeyLen);
 
-        memcpy(mesgBuffer, ephemeralKey, ephemeralPubKeyLen);
+        memcpy(mesgBuffer, ephemeralPubKey, ephemeralPubKeyLen);
         memcpy(mesgBuffer + ephemeralPubKeyLen, hmac, hmaclen);
         sendKey(*sock, mesgBuffer, ephemeralPubKeyLen + hmaclen);
 
