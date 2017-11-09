@@ -51,7 +51,7 @@ const unsigned char *testString = (unsigned char *) "This is a test";
 const size_t testStringLen = 14;
 
 #define THREAD_COUNT 8
-#define TASK_COUNT 100
+#define TASK_COUNT 1000
 
 void performTests(void) {
     initCrypto();
@@ -153,7 +153,7 @@ bool testECDH(void) {
     EVP_PKEY_free(firstKey);
     EVP_PKEY_free(secondKey);
 
-    OPENSSL_clear_free(symKey, EVP_MAX_MD_SIZE);
+    OPENSSL_clear_free(symKey, EVP_MD_size(EVP_sha256()));
 
     return strcmp((char *) plaintext, (char *) testString) == 0;
 }

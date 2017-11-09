@@ -113,7 +113,7 @@ EVP_PKEY *generateECKey(void) {
 }
 
 unsigned char *generateHMAC_PKEY(const unsigned char *mesg, size_t mlen, size_t *hmaclen, EVP_PKEY *key) {
-    size_t pubKeyLen;
+    size_t pubKeyLen = 0;
     unsigned char *pubKey = getPublicKey(key, &pubKeyLen);
 
     unsigned char *out = generateHMAC_Buffer(mesg, mlen, hmaclen, pubKey, pubKeyLen);

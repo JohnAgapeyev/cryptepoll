@@ -107,9 +107,8 @@ unsigned char *exchangeKeys(const int * const sock) {
     size_t ephemeralPubKeyLen;
     unsigned char *ephemeralPubKey = getPublicKey(ephemeralKey, &ephemeralPubKeyLen);
 
-    unsigned char *hmac = NULL;
-    size_t hmaclen;
-    generateHMAC(ephemeralPubKey, ephemeralPubKeyLen, &hmac, &hmaclen, LongTermSigningKey);
+    size_t hmaclen = 0;
+    unsigned char *hmac = generateHMAC_Buffer(ephemeralPubKey, ephemeralPubKeyLen, &hmaclen, signPubKey, pubKeyLen);
 
     unsigned char *sharedSecret = NULL;
 
@@ -130,9 +129,40 @@ unsigned char *exchangeKeys(const int * const sock) {
         if (mesgBuffer == NULL) {
             fatal_error("realloc");
         }
-        size_t n = readNBytes(*sock, mesgBuffer, pubKeyLen);
+
+        int epollfd = createEpollFd();
+
+        struct epoll_event ev;
+        ev.data.fd = *sock;
+        ev.events = EPOLLIN | EPOLLET;
+
+        addEpollSocket(epollfd, *sock, &ev);
+
+        struct epoll_event *eventList = malloc(sizeof(struct epoll_event) * 10);
+
+        int nevents = waitForEpollEvent(epollfd, eventList);
+        size_t n = 0;
+        for (int i = 0; i < nevents; ++i) {
+            if (eventList[i].events & EPOLLERR) {
+                fatal_error("Key exchange socket error");
+            } else if (eventList[i].events & EPOLLHUP) {
+                fatal_error("Exchange socket closed during handshake");
+            } else if (eventList[i].events & EPOLLIN) {
+                n = readNBytes(*sock, mesgBuffer, pubKeyLen);
+            } else {
+                fatal_error("Unknown epoll error");
+            }
+        }
+
+        free(eventList);
+        close(epollfd);
 
         clientEntry->signingKey = setPublicKey(mesgBuffer, n);
+
+        mesgBuffer = realloc(mesgBuffer, ephemeralPubKeyLen + hmaclen);
+        if (mesgBuffer == NULL) {
+            fatal_error("realloc");
+        }
 
         if (!receiveAndVerifyKey(sock, mesgBuffer, ephemeralPubKeyLen + hmaclen, ephemeralPubKeyLen, hmaclen)) {
             fatal_error("HMAC verification");
@@ -149,7 +179,33 @@ unsigned char *exchangeKeys(const int * const sock) {
         if (mesgBuffer == NULL) {
             fatal_error("malloc");
         }
-        size_t n = readNBytes(*sock, mesgBuffer, pubKeyLen);
+
+        int epollfd = createEpollFd();
+
+        struct epoll_event ev;
+        ev.data.fd = *sock;
+        ev.events = EPOLLIN | EPOLLET;
+
+        addEpollSocket(epollfd, *sock, &ev);
+
+        struct epoll_event *eventList = malloc(sizeof(struct epoll_event) * 10);
+
+        int nevents = waitForEpollEvent(epollfd, eventList);
+        size_t n = 0;
+        for (int i = 0; i < nevents; ++i) {
+            if (eventList[i].events & EPOLLERR) {
+                fatal_error("Key exchange socket error");
+            } else if (eventList[i].events & EPOLLHUP) {
+                fatal_error("Exchange socket closed during handshake");
+            } else if (eventList[i].events & EPOLLIN) {
+                n = readNBytes(*sock, mesgBuffer, pubKeyLen);
+            } else {
+                fatal_error("Unknown epoll error");
+            }
+        }
+
+        free(eventList);
+        close(epollfd);
 
         clientEntry->signingKey = setPublicKey(mesgBuffer, n);
 
@@ -200,13 +256,40 @@ sendKey:
 
 bool receiveAndVerifyKey(const int * const sock, unsigned char *buffer, const size_t bufSize, const size_t keyLen, const size_t hmacLen) {
     assert(bufSize >= keyLen + hmacLen);
-    readNBytes(*sock, buffer, bufSize);
+
+    int epollfd = createEpollFd();
+
+    struct epoll_event ev;
+    memset(&ev, 0, sizeof(struct epoll_event));
+    ev.data.fd = *sock;
+    ev.events = EPOLLIN | EPOLLET;
+
+    addEpollSocket(epollfd, *sock, &ev);
+
+    struct epoll_event *eventList = malloc(sizeof(struct epoll_event) * MAX_EPOLL_EVENTS);
+
+    int nevents = waitForEpollEvent(epollfd, eventList);
+    size_t n = 0;
+    for (int i = 0; i < nevents; ++i) {
+        if (eventList[i].events & EPOLLERR) {
+            fatal_error("Key exchange socket error");
+        } else if (eventList[i].events & EPOLLHUP) {
+            fatal_error("Exchange socket closed during handshake");
+        } else if (eventList[i].events & EPOLLIN) {
+            n = readNBytes(*sock, buffer, bufSize);
+        } else {
+            fatal_error("Unknown epoll error");
+        }
+    }
+
+    free(eventList);
+    close(epollfd);
 
     EVP_PKEY *serverPubKey = setPublicKey(buffer, keyLen);
 
     struct client *entry = container_entry(sock, struct client, socket);
 
-    bool rtn = verifyHMAC(buffer, keyLen, buffer + keyLen, hmacLen, entry->signingKey);
+    bool rtn = verifyHMAC_PKEY(buffer, keyLen, buffer + keyLen, hmacLen, entry->signingKey);
 
     EVP_PKEY_free(serverPubKey);
     return rtn;
@@ -230,7 +313,12 @@ void startClient(void) {
 
     struct client *serverEntry = &clientList[clientNum];
 
-    //unsigned char *secretKey = exchangeKeys(&serverEntry->socket);
+    unsigned char *secretKey = exchangeKeys(&serverEntry->socket);
+
+    for (int i = 0; i < EVP_MD_size(EVP_sha256()); ++i) {
+        printf("%02x", secretKey[i]);
+    }
+    printf("\n");
 
     int epollfd = createEpollFd();
 
@@ -351,8 +439,12 @@ void *eventLoop(void *epollfd) {
 
                         size_t newClientIndex = addClient(sock);
 
-                        //unsigned char *secretKey = exchangeKeys(&clientList[newClientIndex].socket);
+                        unsigned char *secretKey = exchangeKeys(&clientList[newClientIndex].socket);
 
+                        for (int i = 0; i < EVP_MD_size(EVP_sha256()); ++i) {
+                            printf("%02x", secretKey[i]);
+                        }
+                        printf("\n");
                         //Add keys to client struct here
 
                         struct epoll_event ev;
