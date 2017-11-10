@@ -88,8 +88,16 @@ void process_packet(const unsigned char * const buffer, const size_t bufsize) {
     (void)(buffer);
     (void)(bufsize);
 #ifndef NDEBUG
-    fprintf(stderr, "Processing packet\n");
-    fprintf(stderr, "Processing packet of size %zu with contents %s\n", bufsize, buffer);
+    fprintf(stderr, "Received packet of size %zu\n", bufsize);
+    fprintf(stderr, "Raw hex output: ");
+    for (size_t i = 0; i < bufsize; ++i) {
+        fprintf(stderr, "%02x", buffer[i]);
+    }
+    fprintf(stderr, "\nText output: ");
+    for (size_t i = 0; i < bufsize; ++i) {
+        fprintf(stderr, "%c", buffer[i]);
+    }
+    fprintf(stderr, "\n");
 #endif
 }
 
@@ -335,7 +343,7 @@ void startClient(void) {
 
     while(true) {
         char *result = getUserInput("Enter your message: ");
-        send(serverSock, result, strlen(result), 0);
+        sendEncryptedUserData((unsigned char *) result, strlen(result), serverEntry);
         free(result);
     }
 
@@ -417,7 +425,7 @@ void *eventLoop(void *epollfd) {
 
                     int numRead;
                     while ((numRead = readNBytes(sock, buffer, 2 * sizeToRead)) > 0) {
-                        process_packet(buffer, numRead);
+                        decryptReceivedUserData(buffer, numRead, eventList[i].data.ptr);
                         if (isServer) {
                             send(sock, buffer, numRead, 0);
                         }
@@ -430,9 +438,8 @@ void *eventLoop(void *epollfd) {
                             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                                 //No incoming connections, ignore the error
                                 break;
-                            } else {
-                                fatal_error("accept");
                             }
+                            fatal_error("accept");
                         }
 
                         setNonBlocking(sock);
@@ -441,11 +448,11 @@ void *eventLoop(void *epollfd) {
 
                         unsigned char *secretKey = exchangeKeys(&clientList[newClientIndex].socket);
 
+                        //Add keys to client struct here
                         for (int i = 0; i < EVP_MD_size(EVP_sha256()); ++i) {
                             printf("%02x", secretKey[i]);
                         }
                         printf("\n");
-                        //Add keys to client struct here
 
                         struct epoll_event ev;
                         ev.events = EPOLLIN | EPOLLET | EPOLLEXCLUSIVE;
@@ -490,4 +497,93 @@ void initClientStruct(struct client *newClient, int sock) {
     newClient->sharedKey = NULL;
     newClient->signingKey = NULL;
     newClient->enabled = true;
+}
+
+void sendEncryptedUserData(const unsigned char *mesg, const size_t mesgLen, const struct client *dest) {
+    /*
+     * Mesg buffer that will be sent
+     * mesgLen is self-explanatory
+     * BLOCK_SIZE since encryption can pad up to one block length
+     * IV_SIZE is self-explanatory
+     * EVP_MAX_MD_SIZE is for the possible HMAC size without needing to realloc
+     */
+    unsigned char *out = malloc(mesgLen + BLOCK_SIZE + IV_SIZE + EVP_MAX_MD_SIZE);
+    if (out == NULL) {
+        fatal_error("malloc");
+    }
+
+    memset(out, 0xff, mesgLen + BLOCK_SIZE + IV_SIZE + EVP_MAX_MD_SIZE);
+
+    printf("%d\n", mesgLen + BLOCK_SIZE + IV_SIZE + EVP_MAX_MD_SIZE);
+
+    unsigned char iv[IV_SIZE];
+    fillRandom(iv, IV_SIZE);
+
+    size_t cipherLen = encrypt(mesg, mesgLen, dest->sharedKey, iv, out);
+
+    //for (size_t i = 0; i < cipherLen; ++i) {
+        //printf("%02x", out[i]);
+    //}
+    //printf("\n");
+
+    //printf("%d\n", cipherLen);
+
+    assert(cipherLen <= mesgLen + BLOCK_SIZE);
+
+    memmove(out + cipherLen, iv, IV_SIZE);
+
+    //for (size_t i = 0; i < IV_SIZE; ++i) {
+        //printf("%02x", out[i + cipherLen]);
+    //}
+    //printf("\n");
+
+    const size_t hmacIndex = cipherLen + IV_SIZE;
+
+    //printf("%d\n", hmacIndex);
+    size_t hmacLen = 0;
+    //Generate HMAC over the ciphertext and IV
+    unsigned char *hmac = generateHMAC_Buffer(out, hmacIndex, &hmacLen, dest->sharedKey, SYMMETRIC_KEY_SIZE);
+
+    printf("HMAC %d\n", hmacLen);
+    assert(hmacLen <= EVP_MAX_MD_SIZE);
+
+    memmove(out + hmacIndex, hmac, hmacLen);
+    OPENSSL_free(hmac);
+
+    for (size_t i = 0; i < hmacLen; ++i) {
+        printf("%02x", out[i + hmacIndex]);
+    }
+    printf("\n");
+
+    //printf("%d\n", cipherLen + IV_SIZE + hmacLen);
+
+    send(dest->socket, out, cipherLen + IV_SIZE + hmacLen, 0);
+
+    free(out);
+}
+
+void decryptReceivedUserData(const unsigned char *mesg, const size_t mesgLen, const struct client *src) {
+    assert(mesgLen > IV_SIZE + HASH_SIZE);
+    unsigned char *plain = malloc(mesgLen);
+    if (plain == NULL) {
+        fatal_error("malloc");
+    }
+
+    printf("\n\nReceived HMAC: ");
+    for (size_t i = 0; i < HASH_SIZE; ++i) {
+        printf("%02x", *(mesg + mesgLen - HASH_SIZE + i));
+    }
+    printf("\n");
+
+    bool validPacket = verifyHMAC_Buffer(mesg, mesgLen - HASH_SIZE, mesg + mesgLen - HASH_SIZE, HASH_SIZE, src->sharedKey, SYMMETRIC_KEY_SIZE);
+    if (!validPacket) {
+        fprintf(stderr, "Packet HMAC failed to verify, dropping...\n");
+        return;
+    }
+
+    size_t plainLen = decrypt(mesg, mesgLen - HASH_SIZE - IV_SIZE, src->sharedKey, mesg + mesgLen - HASH_SIZE - IV_SIZE, plain);
+
+    process_packet(plain, plainLen);
+
+    free(plain);
 }

@@ -64,5 +64,7 @@ void startServer(void);
 size_t addClient(int sock);
 void initClientStruct(struct client *newClient, int sock);
 void *eventLoop(void *epollfd);
+void sendEncryptedUserData(const unsigned char *mesg, const size_t mesgLen, const struct client *dest);
+void decryptReceivedUserData(const unsigned char *mesg, const size_t mesgLen, const struct client *src);
 
 #endif

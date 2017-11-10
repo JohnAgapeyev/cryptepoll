@@ -185,11 +185,9 @@ size_t encrypt(const unsigned char *plaintext, size_t plaintextlen, const unsign
     checkCryptoAPICall(EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv));
 
     int len;
-
     checkCryptoAPICall(EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintextlen));
 
     int ciphertextlen = len;
-
     checkCryptoAPICall(EVP_EncryptFinal_ex(ctx, ciphertext + len, &len));
 
     ciphertextlen += len;
@@ -210,11 +208,9 @@ size_t decrypt(const unsigned char *ciphertext, size_t ciphertextlen, const unsi
     checkCryptoAPICall(EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv));
 
     int len;
-
     checkCryptoAPICall(EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertextlen));
 
     int plaintextlen = len;
-
     checkCryptoAPICall(EVP_DecryptFinal_ex(ctx, plaintext + len, &len));
 
     plaintextlen += len;
