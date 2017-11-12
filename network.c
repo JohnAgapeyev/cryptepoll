@@ -36,6 +36,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 #include <errno.h>
 #include <string.h>
 #include <assert.h>
@@ -293,6 +294,8 @@ bool receiveAndVerifyKey(const int * const sock, unsigned char *buffer, const si
     free(eventList);
     close(epollfd);
 
+    assert(n >= keyLen);
+
     EVP_PKEY *serverPubKey = setPublicKey(buffer, keyLen);
 
     struct client *entry = container_entry(sock, struct client, socket);
@@ -341,7 +344,7 @@ void startClient(void) {
 
     //eventLoop(&epollfd);
 
-    while(true) {
+    while(isRunning) {
         char *result = getUserInput("Enter your message: ");
         sendEncryptedUserData((unsigned char *) result, strlen(result), serverEntry);
         free(result);
@@ -380,13 +383,9 @@ void *eventLoop(void *epollfd) {
         fatal_error("calloc");
     }
 
-    //TODO: Change infinite loop to use condition that changes on user exit
-    while (true) {
+    while (isRunning) {
         int n = waitForEpollEvent(efd, eventList);
-        if (n == -1) {
-            perror("epoll_wait");
-            break;
-        }
+        //n can't be -1 because the handling for that is done in waitForEpollEvent
         for (int i = 0; i < n; ++i) {
             if (eventList[i].events & EPOLLERR) {
                 if (eventList[i].data.ptr) {
@@ -464,6 +463,7 @@ void *eventLoop(void *epollfd) {
             }
         }
     }
+    free(eventList);
     return NULL;
 }
 
@@ -514,48 +514,25 @@ void sendEncryptedUserData(const unsigned char *mesg, const size_t mesgLen, cons
 
     memset(out, 0xff, mesgLen + BLOCK_SIZE + IV_SIZE + EVP_MAX_MD_SIZE);
 
-    printf("%d\n", mesgLen + BLOCK_SIZE + IV_SIZE + EVP_MAX_MD_SIZE);
-
     unsigned char iv[IV_SIZE];
     fillRandom(iv, IV_SIZE);
 
     size_t cipherLen = encrypt(mesg, mesgLen, dest->sharedKey, iv, out);
 
-    //for (size_t i = 0; i < cipherLen; ++i) {
-        //printf("%02x", out[i]);
-    //}
-    //printf("\n");
-
-    //printf("%d\n", cipherLen);
-
     assert(cipherLen <= mesgLen + BLOCK_SIZE);
 
     memmove(out + cipherLen, iv, IV_SIZE);
 
-    //for (size_t i = 0; i < IV_SIZE; ++i) {
-        //printf("%02x", out[i + cipherLen]);
-    //}
-    //printf("\n");
-
     const size_t hmacIndex = cipherLen + IV_SIZE;
 
-    //printf("%d\n", hmacIndex);
     size_t hmacLen = 0;
     //Generate HMAC over the ciphertext and IV
     unsigned char *hmac = generateHMAC_Buffer(out, hmacIndex, &hmacLen, dest->sharedKey, SYMMETRIC_KEY_SIZE);
 
-    printf("HMAC %d\n", hmacLen);
     assert(hmacLen <= EVP_MAX_MD_SIZE);
 
     memmove(out + hmacIndex, hmac, hmacLen);
     OPENSSL_free(hmac);
-
-    for (size_t i = 0; i < hmacLen; ++i) {
-        printf("%02x", out[i + hmacIndex]);
-    }
-    printf("\n");
-
-    //printf("%d\n", cipherLen + IV_SIZE + hmacLen);
 
     send(dest->socket, out, cipherLen + IV_SIZE + hmacLen, 0);
 
@@ -568,12 +545,6 @@ void decryptReceivedUserData(const unsigned char *mesg, const size_t mesgLen, co
     if (plain == NULL) {
         fatal_error("malloc");
     }
-
-    printf("\n\nReceived HMAC: ");
-    for (size_t i = 0; i < HASH_SIZE; ++i) {
-        printf("%02x", *(mesg + mesgLen - HASH_SIZE + i));
-    }
-    printf("\n");
 
     bool validPacket = verifyHMAC_Buffer(mesg, mesgLen - HASH_SIZE, mesg + mesgLen - HASH_SIZE, HASH_SIZE, src->sharedKey, SYMMETRIC_KEY_SIZE);
     if (!validPacket) {

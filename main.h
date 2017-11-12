@@ -37,6 +37,10 @@
 #ifndef MAIN_H
 #define MAIN_H
 
+#include <signal.h>
+
+volatile sig_atomic_t isRunning;
+
 char *getUserInput(const char *prompt);
 
 #endif

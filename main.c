@@ -35,10 +35,12 @@
  */
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 #include <errno.h>
 #include <unistd.h>
 #include <string.h>
 #include <ctype.h>
+#include <signal.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include "main.h"
@@ -46,13 +48,20 @@
 #include "socket.h"
 #include "network.h"
 
+static void sighandler(int signo);
+
 int main(int argc, char **argv) {
 #ifndef NDEBUG
     //performTests();
     //return EXIT_SUCCESS;
-#else
-    //Do nothing at the moment
 #endif
+
+    isRunning = ATOMIC_VAR_INIT(1);
+
+    signal(SIGINT, sighandler);
+    signal(SIGHUP, sighandler);
+    signal(SIGQUIT, sighandler);
+    signal(SIGTERM, sighandler);
 
     int option;
     bool isClient = false; //Temp bool used to check if both client and server is chosen
@@ -86,8 +95,7 @@ int main(int argc, char **argv) {
         portString = "1337";
     }
 
-    //port = htons(strtoul(portString, NULL, 0));
-    port = (strtoul(portString, NULL, 0));
+    port = strtoul(portString, NULL, 0);
     if (errno == EINVAL || errno == ERANGE) {
         perror("strtoul");
         return EXIT_FAILURE;
@@ -144,4 +152,8 @@ char *getUserInput(const char *prompt) {
         ++n;
     }
     return buffer;
+}
+
+void sighandler(int signo) {
+    isRunning = 0;
 }

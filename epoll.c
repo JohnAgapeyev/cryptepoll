@@ -57,6 +57,10 @@ void addEpollSocket(const int epollfd, const int sock, struct epoll_event *ev) {
 int waitForEpollEvent(const int epollfd, struct epoll_event *events) {
     int nevents;
     if ((nevents = epoll_wait(epollfd, events, MAX_EPOLL_EVENTS, -1)) == -1) {
+        if (errno = EINTR) {
+            //Interrupted by signal, ignore it
+            return 0;
+        }
         fatal_error("epoll_wait");
     }
     return nevents;
