@@ -37,6 +37,7 @@
 #define NETWORK_H
 
 #include <stdlib.h>
+#include <stdint.h>
 #include <openssl/evp.h>
 
 struct client {
@@ -45,6 +46,18 @@ struct client {
     EVP_PKEY *signingKey;
     bool enabled;
 };
+
+#define HEADER_SIZE ((sizeof(uint16_t) * 4) + sizeof(unsigned char))
+
+/*
+ * Length is 2 bytes
+ * Ciphertext can be max 1024
+ * IV is 16
+ * Hash size is 32
+ */
+#define MAX_PACKET_SIZE 1074
+
+#define WINDOW_SIZE 3
 
 extern bool isServer;
 extern EVP_PKEY *LongTermSigningKey;
@@ -55,16 +68,23 @@ extern int listenSock;
 
 void network_init(void);
 void network_cleanup(void);
-void process_packet(const unsigned char * const buffer, const size_t bufsize);
+void process_packet(const unsigned char * const buffer, const size_t bufsize, struct client *src);
 unsigned char *exchangeKeys(const int * const sock);
-void sendKey(const int sock, const unsigned char *buffer, const size_t bufSize);
 bool receiveAndVerifyKey(const int * const sock, unsigned char *buffer, const size_t bufSize, const size_t keyLen, const size_t hmacLen);
-void startClient(void);
-void startServer(void);
+void startClient(const char *ip, const char *portString, int inputFD);
+void startServer(const int inputFD);
 size_t addClient(int sock);
 void initClientStruct(struct client *newClient, int sock);
 void *eventLoop(void *epollfd);
-void sendEncryptedUserData(const unsigned char *mesg, const size_t mesgLen, const struct client *dest);
-void decryptReceivedUserData(const unsigned char *mesg, const size_t mesgLen, const struct client *src);
+void sendEncryptedUserData(const unsigned char *mesg, const size_t mesgLen, struct client *dest, const bool isAck);
+void decryptReceivedUserData(const unsigned char *mesg, const size_t mesgLen, struct client *src);
+void sendReliablePacket(const unsigned char *mesg, const size_t mesgLen, struct client *dest);
+void handleIncomingConnection(const int efd);
+void handleSocketError(const int sock);
+void handleIncomingPacket(struct client *src);
+uint16_t readPacketLength(const int sock);
+void sendSigningKey(const int sock, const unsigned char *key, const size_t keyLen);
+void sendEphemeralKey(const int sock, struct client *clientEntry, const unsigned char *key, const size_t keyLen, const unsigned char *hmac, const size_t hmacLen);
+void readSigningKey(const int sock, struct client *clientEntry, const size_t keyLen);
 
 #endif
