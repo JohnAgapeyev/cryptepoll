@@ -176,10 +176,10 @@ int main(int argc, char **argv) {
         listenSock = createSocket(AF_INET, SOCK_STREAM, 0);
         bindSocket(listenSock, port);
         listen(listenSock, 5);
-        startServer(inputFD);
+        startServer(-1);
         close(listenSock);
     } else {
-        startClient(ipAddr, portString, inputFD);
+        startClient(NULL, portString, -1);
     }
 
     return EXIT_SUCCESS;

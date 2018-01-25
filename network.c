@@ -228,8 +228,6 @@ unsigned char *exchangeKeys(const int * const sock) {
 
         EVP_PKEY *clientPubKey = setPublicKey(mesgBuffer + sizeof(uint16_t) + sizeof(uint16_t), ephemeralPubKeyLen);
 
-        clientEntry->ack = *((uint16_t *)(mesgBuffer + sizeof(uint16_t)));
-
         sharedSecret = getSharedSecret(ephemeralKey, clientPubKey);
 
         EVP_PKEY_free(clientPubKey);
@@ -246,8 +244,6 @@ unsigned char *exchangeKeys(const int * const sock) {
         }
 
         EVP_PKEY *serverPubKey = setPublicKey(mesgBuffer + sizeof(uint16_t) + sizeof(uint16_t), ephemeralPubKeyLen);
-
-        clientEntry->ack = *((uint16_t *)(mesgBuffer + sizeof(uint16_t)));
 
         sendSigningKey(*sock, signPubKey, pubKeyLen);
         sendEphemeralKey(*sock, clientEntry, ephemeralPubKey, ephemeralPubKeyLen, hmac, hmaclen);
@@ -370,55 +366,6 @@ void startClient(const char *ip, const char *portString, int inputFD) {
 
     pthread_t readThread;
     pthread_create(&readThread, NULL, eventLoop, &epollfd);
-
-    unsigned char mesgBuffers[WINDOW_SIZE][MAX_USER_BUFFER];
-    int amountRead[WINDOW_SIZE];
-
-    FILE *fp = fdopen(inputFD, "rb");
-    fseek(fp, 0, SEEK_END);
-    long fileSize  =ftell(fp);
-    rewind(fp);
-
-    if (inputFD != STDIN_FILENO) {
-        printf("Filesize: %lu\n", fileSize);
-    }
-
-    size_t packetNum = 1;
-
-    while(isRunning) {
-        for (int i = 0; i < WINDOW_SIZE; ++i) {
-            int n = read(inputFD, mesgBuffers[i], MAX_USER_BUFFER);
-            amountRead[i] = n;
-            if (n <= 0) {
-                break;
-            }
-            if (inputFD == STDIN_FILENO) {
-                printf("Sending user packet of size %d\n", n);
-            } else {
-                printf("Sending packet %zu of %zu\n", packetNum++, (fileSize / MAX_USER_BUFFER) + 1);
-            }
-        }
-        if (amountRead[0] <= 0) {
-            //First read of the window was EOF
-            //Nothing to send
-            break;
-        }
-        for (int i = 0; i < WINDOW_SIZE && amountRead[i] > 0; ++i) {
-            sendReliablePacket((unsigned char *) mesgBuffers[i], amountRead[i], serverEntry);
-            ++serverEntry->seq;
-        }
-    }
-
-    printf("File sending complete\n");
-
-    atomic_store(&finishedSending, true);
-
-    //Spin to ensure we've received all of the other side's data
-    while(isRunning) {
-        if (finishedSending && finishedReceiving) {
-            break;
-        }
-    }
 
 clientCleanup:
     close(epollfd);
@@ -626,7 +573,7 @@ void initClientStruct(struct client *newClient, int sock) {
  * All values excluding Packet Length, IV, and HMAC are encrypted into a single ciphertext.
  * HMAC is calculated over the ciphertext.
  */
-void sendEncryptedUserData(const unsigned char *mesg, const size_t mesgLen, struct client *dest, const bool isAck) {
+void sendEncryptedUserData(const unsigned char *mesg, const size_t mesgLen, struct client *dest) {
     //Mesg is the plaintext, and does not include the sequence or ack, etc numbers
     assert(mesgLen <= MAX_USER_BUFFER);
     /*
@@ -641,13 +588,6 @@ void sendEncryptedUserData(const unsigned char *mesg, const size_t mesgLen, stru
 
     //Buffer to hold mesg plus mesg header, not including packet length
     unsigned char wrappedMesg[mesgLen + HEADER_SIZE - sizeof(uint16_t)];
-
-    //Fill wrappedMesg with appropriate values
-    memset(wrappedMesg, (isAck) ? ((finishedSending) ? FIN | ACK : ACK) : NONE, sizeof(unsigned char));
-    memcpy(wrappedMesg + sizeof(unsigned char), &dest->seq, sizeof(uint16_t));
-    memcpy(wrappedMesg + sizeof(unsigned char) + sizeof(uint16_t), &dest->ack, sizeof(uint16_t));
-    memcpy(wrappedMesg + sizeof(unsigned char) + (sizeof(uint16_t) * 2), &dest->windowSize, sizeof(uint16_t));
-    memcpy(wrappedMesg + sizeof(unsigned char) + (sizeof(uint16_t) * 3), mesg, mesgLen);
 
     unsigned char iv[IV_SIZE];
     fillRandom(iv, IV_SIZE);
@@ -978,8 +918,6 @@ void sendEphemeralKey(const int sock, struct client *clientEntry, const unsigned
 
     unsigned char mesgBuffer[packetLength];
     memcpy(mesgBuffer, &packetLength, sizeof(uint16_t));
-    fillRandom((unsigned char *) &(clientEntry->seq), sizeof(uint16_t));
-    memcpy(mesgBuffer + sizeof(uint16_t), &clientEntry->seq, sizeof(uint16_t));
     memcpy(mesgBuffer + sizeof(uint16_t) + sizeof(uint16_t), key, keyLen);
     memcpy(mesgBuffer + sizeof(uint16_t) + sizeof(uint16_t) + keyLen, hmac, hmacLen);
 

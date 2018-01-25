@@ -57,8 +57,6 @@ struct client {
  */
 #define MAX_PACKET_SIZE 1074
 
-#define WINDOW_SIZE 3
-
 extern bool isServer;
 extern EVP_PKEY *LongTermSigningKey;
 extern struct client *clientList;
@@ -76,7 +74,7 @@ void startServer(const int inputFD);
 size_t addClient(int sock);
 void initClientStruct(struct client *newClient, int sock);
 void *eventLoop(void *epollfd);
-void sendEncryptedUserData(const unsigned char *mesg, const size_t mesgLen, struct client *dest, const bool isAck);
+void sendEncryptedUserData(const unsigned char *mesg, const size_t mesgLen, struct client *dest);
 void decryptReceivedUserData(const unsigned char *mesg, const size_t mesgLen, struct client *src);
 void sendReliablePacket(const unsigned char *mesg, const size_t mesgLen, struct client *dest);
 void handleIncomingConnection(const int efd);
