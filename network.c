@@ -150,12 +150,6 @@ void process_packet(const unsigned char * const buffer, const size_t bufsize, st
     (void)(buffer);
     (void)(bufsize);
 #ifndef NDEBUG
-    fprintf(stderr, "Received packet of size %zu\n", bufsize);
-    fprintf(stderr, "Raw hex output: ");
-    for (size_t i = 0; i < bufsize; ++i) {
-        fprintf(stderr, "%02x", buffer[i]);
-    }
-
     debug_print("Received packet of size %zu\n", bufsize);
     debug_print_buffer("Raw hex output: ", buffer, bufsize);
 
@@ -366,6 +360,12 @@ void startClient(const char *ip, const char *portString, int inputFD) {
 
     pthread_t readThread;
     pthread_create(&readThread, NULL, eventLoop, &epollfd);
+
+    while(isRunning) {
+        char *input = getUserInput("Enter your message: ");
+        sendEncryptedUserData(input, strlen(input), serverEntry);
+        free(input);
+    }
 
 clientCleanup:
     close(epollfd);
@@ -584,25 +584,22 @@ void sendEncryptedUserData(const unsigned char *mesg, const size_t mesgLen, stru
      * HASH_SIZE is for the HMAC
      * sizeof calls are related to header specific lengths
      */
-    unsigned char *out = checked_malloc(HEADER_SIZE + mesgLen + BLOCK_SIZE + IV_SIZE + HASH_SIZE);
-
-    //Buffer to hold mesg plus mesg header, not including packet length
-    unsigned char wrappedMesg[mesgLen + HEADER_SIZE - sizeof(uint16_t)];
+    unsigned char *out = checked_malloc(sizeof(uint16_t) + mesgLen + BLOCK_SIZE + IV_SIZE + HASH_SIZE);
 
     unsigned char iv[IV_SIZE];
     fillRandom(iv, IV_SIZE);
 
     //Encrypt message and place it immediately following length field
-    size_t cipherLen = encrypt(wrappedMesg, mesgLen + HEADER_SIZE - sizeof(uint16_t), dest->sharedKey, iv, out + sizeof(uint16_t));
+    size_t cipherLen = encrypt(mesg, mesgLen, dest->sharedKey, iv, out + sizeof(uint16_t));
 
-    assert(cipherLen <= mesgLen + HEADER_SIZE - sizeof(uint16_t) + BLOCK_SIZE);
+    assert(cipherLen <= mesgLen + BLOCK_SIZE);
 
     uint16_t packetLength = cipherLen + IV_SIZE + HASH_SIZE + sizeof(uint16_t);
     //Write packet length to start of packet buffer
     memcpy(out, &packetLength, sizeof(uint16_t));
 
     //Write the IV into the buffer
-    memmove(out + sizeof(uint16_t) + cipherLen, iv, IV_SIZE);
+    memcpy(out + sizeof(uint16_t) + cipherLen, iv, IV_SIZE);
 
     //Index of the hmac start in the packet buffer
     const size_t hmacIndex = sizeof(uint16_t) + cipherLen + IV_SIZE;
@@ -617,7 +614,7 @@ void sendEncryptedUserData(const unsigned char *mesg, const size_t mesgLen, stru
     debug_print_buffer("Sent hmac: ", hmac, HASH_SIZE);
 
     //Write the hmac into the packet buffer
-    memmove(out + hmacIndex, hmac, hmacLen);
+    memcpy(out + hmacIndex, hmac, hmacLen);
     OPENSSL_free(hmac);
 
     debug_print_buffer("Sending packets with contents: ", out, packetLength);
