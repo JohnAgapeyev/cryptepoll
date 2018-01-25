@@ -690,3 +690,70 @@ EVP_PKEY *allocateKeyPair(void) {
     nullCheckCryptoAPICall(out = EVP_PKEY_new());
     return out;
 }
+
+size_t encrypt_aead(const unsigned char *plaintext, size_t plain_len, const unsigned char *aad, const size_t aad_len, const unsigned char *key,
+        const unsigned char *iv, unsigned char *ciphertext, unsigned char *tag) {
+
+    EVP_CIPHER_CTX *ctx;
+    nullCheckCryptoAPICall(ctx = EVP_CIPHER_CTX_new());
+
+    checkCryptoAPICall(EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL));
+
+    checkCryptoAPICall(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, IV_SIZE, NULL));
+
+    checkCryptoAPICall(EVP_EncryptInit_ex(ctx, NULL, NULL, key, iv));
+
+    int len;
+    checkCryptoAPICall(EVP_EncryptUpdate(ctx, NULL, &len, aad, aad_len));
+
+    checkCryptoAPICall(EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plain_len));
+
+    int ciphertextlen = len;
+    checkCryptoAPICall(EVP_EncryptFinal_ex(ctx, ciphertext + len, &len));
+
+    ciphertextlen += len;
+
+    checkCryptoAPICall(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, IV_SIZE, tag));
+
+    EVP_CIPHER_CTX_free(ctx);
+
+    assert(ciphertextlen >= 0);
+
+    return ciphertextlen;
+}
+
+ssize_t decrypt_aead(const unsigned char *ciphertext, size_t cipher_len, const unsigned char *aad, const size_t aad_len, const unsigned char *key,
+        const unsigned char *iv, unsigned char *tag, unsigned char *plaintext) {
+
+    EVP_CIPHER_CTX *ctx;
+    nullCheckCryptoAPICall(ctx = EVP_CIPHER_CTX_new());
+
+    checkCryptoAPICall(EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL));
+
+    checkCryptoAPICall(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, IV_SIZE, NULL));
+
+    checkCryptoAPICall(EVP_DecryptInit_ex(ctx, NULL, NULL, key, iv));
+
+    int len;
+    checkCryptoAPICall(EVP_DecryptUpdate(ctx, NULL, &len, aad, aad_len));
+
+    checkCryptoAPICall(EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, cipher_len));
+
+    int plaintextlen = len;
+
+    if (!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, IV_SIZE, tag)) {
+        libcrypto_error();
+    }
+
+    ssize_t ret = EVP_DecryptFinal_ex(ctx, plaintext + len, &len);
+
+    plaintextlen += len;
+
+    EVP_CIPHER_CTX_free(ctx);
+
+    if (ret > 0) {
+        assert(plaintextlen >= 0);
+        return plaintextlen;
+    }
+    return -1;
+}

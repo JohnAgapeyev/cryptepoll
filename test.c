@@ -41,6 +41,7 @@
 #include "test.h"
 
 static bool testEncryptDecrypt(void);
+static bool testEncryptDecrypt_AAD(void);
 static bool testHMAC(void);
 static bool testECDH(void);
 static bool testGetSetKey(void);
@@ -61,6 +62,7 @@ void performTests(void) {
     assert(testECDH());
     assert(testGetSetKey());
     assert(testKeyHMAC());
+    assert(testEncryptDecrypt_AAD());
 
 #if 1
     pthread_t threads[THREAD_COUNT];
@@ -140,7 +142,7 @@ bool testECDH(void) {
 
     fillRandom(testIV, IV_SIZE);
 
-    unsigned char ciphertxt[testStringLen + IV_SIZE];
+    unsigned char ciphertxt[testStringLen + BLOCK_SIZE];
 
     size_t cipherLen = encrypt(testString, testStringLen, symKey, testIV, ciphertxt);
 
@@ -212,7 +214,42 @@ void *threadRoutine(void *arg) {
         testECDH();
         testGetSetKey();
         testKeyHMAC();
+        testEncryptDecrypt_AAD();
     }
     return arg;
 }
 
+bool testEncryptDecrypt_AAD(void) {
+    unsigned char testKey[SYMMETRIC_KEY_SIZE];
+    unsigned char testIV[IV_SIZE];
+    unsigned char testaad[IV_SIZE];
+
+    fillRandom(testKey, SYMMETRIC_KEY_SIZE);
+    fillRandom(testIV, IV_SIZE);
+    fillRandom(testaad, IV_SIZE);
+
+    unsigned char ciphertxt[testStringLen + BLOCK_SIZE];
+    unsigned char tag[BLOCK_SIZE];
+
+    size_t cipherLen = encrypt_aead(testString, testStringLen, testaad, IV_SIZE, testKey, testIV, ciphertxt, tag);
+
+    unsigned char plaintext[testStringLen];
+
+    ssize_t plainLen = decrypt_aead(ciphertxt, cipherLen, testaad, IV_SIZE, testKey, testIV, tag, plaintext);
+
+    plaintext[plainLen] = '\0';
+
+    bool rtn = (strcmp((char *) plaintext, (char *) testString) == 0);
+
+    //Modification
+    testaad[0] ^= 1;
+    testaad[1] &= 1;
+    testaad[2] += 1;
+
+    plainLen = decrypt_aead(ciphertxt, cipherLen, testaad, IV_SIZE, testKey, testIV, tag, plaintext);
+    if (plainLen == -1) {
+        return rtn;
+    } else {
+        return false;
+    }
+}

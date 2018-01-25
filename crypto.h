@@ -107,4 +107,9 @@ EVP_PKEY *setPublicKey(const unsigned char *newPublic, size_t len);
 unsigned char *getSharedSecret(EVP_PKEY *keypair, EVP_PKEY *clientPublicKey);
 EVP_PKEY *allocateKeyPair(void);
 
+size_t encrypt_aead(const unsigned char *plaintext, size_t plain_len, const unsigned char *aad, const size_t aad_len, const unsigned char *key,
+        const unsigned char *iv, unsigned char *ciphertext, unsigned char *tag);
+ssize_t decrypt_aead(const unsigned char *ciphertext, size_t cipher_len, const unsigned char *aad, const size_t aad_len, const unsigned char *key,
+        const unsigned char *iv, unsigned char *tag, unsigned char *plaintext);
+
 #endif
