@@ -82,7 +82,7 @@ void handleSocketError(const int sock);
 void handleIncomingPacket(struct client *src);
 uint16_t readPacketLength(const int sock);
 void sendSigningKey(const int sock, const unsigned char *key, const size_t keyLen);
-void sendEphemeralKey(const int sock, struct client *clientEntry, const unsigned char *key, const size_t keyLen, const unsigned char *hmac, const size_t hmacLen);
+void sendEphemeralKey(const int sock, const unsigned char *key, const size_t keyLen, const unsigned char *hmac, const size_t hmacLen);
 void readSigningKey(const int sock, struct client *clientEntry, const size_t keyLen);
 
 #endif
