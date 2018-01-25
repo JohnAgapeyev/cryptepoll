@@ -1,4 +1,15 @@
 /*
+ * HEADER FILE: macro.h - Useful macros
+ *
+ * PROGRAM: 7005-asn4
+ *
+ * DATE: Dec. 2, 2017
+ *
+ * DESIGNER: John Agapeyev
+ *
+ * PROGRAMMER: John Agapeyev
+ */
+/*
  *Copyright (C) 2017 John Agapeyev
  *
  *This program is free software: you can redistribute it and/or modify
@@ -47,5 +58,18 @@
 
 #define container_entry(ptr, type, member)\
     ((type *)((char *)(1 ? (ptr) : &((type *)0)->member) - offsetof(type, member)))
+
+#ifndef NDEBUG
+#define DEBUG 1
+#else
+#define DEBUG 0
+#endif
+
+#define debug_print(...) \
+    do { \
+        if (DEBUG) {\
+            fprintf(stderr, __VA_ARGS__); \
+        } \
+    } while(0)
 
 #endif
