@@ -362,10 +362,15 @@ void startClient(const char *ip, const char *portString, int inputFD) {
     pthread_t readThread;
     pthread_create(&readThread, NULL, eventLoop, &epollfd);
 
+    unsigned char input[4096];
     while(isRunning) {
-        char *input = getUserInput("Enter your message: ");
-        sendEncryptedUserData((unsigned char *) input, strlen(input), serverEntry);
-        free(input);
+        int n = read(inputFD, input, 4096);
+        if (n > 0) {
+            sendEncryptedUserData(input, n, serverEntry);
+        } else {
+            printf("Read returned zero or error\n");
+            break;
+        }
     }
 
 clientCleanup:

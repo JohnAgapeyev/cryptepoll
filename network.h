@@ -47,15 +47,13 @@ struct client {
     bool enabled;
 };
 
-#define HEADER_SIZE ((sizeof(uint16_t) * 4) + sizeof(unsigned char))
-
 /*
  * Length is 2 bytes
- * Ciphertext can be max 1024
+ * Ciphertext can be max 4096
  * IV is 16
- * Hash size is 32
+ * Tag size is 16
  */
-#define MAX_PACKET_SIZE 1074
+#define MAX_PACKET_SIZE 4096 + IV_SIZE + TAG_SIZE + sizeof(uint16_t)
 
 extern bool isServer;
 extern EVP_PKEY *LongTermSigningKey;

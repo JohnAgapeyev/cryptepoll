@@ -70,6 +70,8 @@
 #include "socket.h"
 #include "network.h"
 
+int outputFD = -1;
+
 static void sighandler(int signo);
 
 static struct option long_options[] = {
@@ -79,7 +81,6 @@ static struct option long_options[] = {
     {"server",  no_argument,       0, 's'},
     {"ip",      required_argument, 0, 'i'},
     {"file",    required_argument, 0, 'f'},
-    {"out",    required_argument, 0,  'o'},
     {0,         0,                 0, 0}
 };
 
@@ -91,7 +92,6 @@ static struct option long_options[] = {
             "\t [s]erver                - run as server, exclusive with client\n"\
             "\t [i]p <url || ip>        - address to connect to\n"\
             "\t [f]ile <path/to/file>   - the file to send\n"\
-            "\t [o]ut <path/to/file>    - the file to write to, default stdout\n"\
             "\t [h]elp                  - this message\n"\
             );\
     } while(0)
@@ -134,11 +134,15 @@ int main(int argc, char **argv) {
     isServer = false;
 
     const char *portString = NULL;
+    const char *ipAddr = NULL;
+    const char *filename = NULL;
+
+    int inputFD = -1;
 
     int c;
     for (;;) {
         int option_index = 0;
-        if ((c = getopt_long(argc, argv, "csp:i:f:ho:", long_options, &option_index)) == -1) {
+        if ((c = getopt_long(argc, argv, "csp:i:f:h", long_options, &option_index)) == -1) {
             break;
         }
         switch (c) {
@@ -152,20 +156,47 @@ int main(int argc, char **argv) {
             case 'p':
                 portString = optarg;
                 break;
+            case 'i':
+                ipAddr = optarg;
+                break;
+            case 'f':
+                filename = optarg;
+                break;
+            case 'h':
+                //Intentional fallthrough
+            case '?':
+                //Intentional fallthrough
+            default:
+                print_help();
+                return EXIT_SUCCESS;
         }
     }
     if (isClient == isServer) {
-        puts("This program must be run with either the -c or -s flag, but not both.");
-        puts("Please re-run this program with one of the above flags.");
-        puts("-c represents client mode, -s represents server mode");
+        print_help();
         return EXIT_SUCCESS;
     }
-
     if (portString == NULL) {
         puts("No port set, reverting to port 1337");
         portString = "1337";
     }
-
+    if (ipAddr == NULL) {
+        if (!isServer) {
+            puts("No IP provided, will prompt for IP");
+        }
+    }
+    if (filename == NULL) {
+        puts("No filename provided, defaulting to stdin");
+        inputFD = STDIN_FILENO;
+    } else {
+        FILE *fp = fopen(filename, "rb");
+        if (fp == NULL) {
+            printf("Filename invalid\n");
+            print_help();
+            return EXIT_FAILURE;
+        }
+        inputFD = fileno(fp);
+        assert(inputFD != -1);
+    }
     port = strtoul(portString, NULL, 0);
     if (errno == EINVAL || errno == ERANGE) {
         perror("strtoul");
@@ -176,10 +207,10 @@ int main(int argc, char **argv) {
         listenSock = createSocket(AF_INET, SOCK_STREAM, 0);
         bindSocket(listenSock, port);
         listen(listenSock, 5);
-        startServer(-1);
+        startServer(inputFD);
         close(listenSock);
     } else {
-        startClient(NULL, portString, -1);
+        startClient(ipAddr, portString, inputFD);
     }
 
     return EXIT_SUCCESS;
