@@ -1,4 +1,23 @@
 /*
+ * SOURCE FILE: socket.c - Implementation of functions declared in socket.h
+ *
+ * PROGRAM: 7005-asn4
+ *
+ * DATE: Dec. 2, 2017
+ *
+ * FUNCTIONS:
+ * int createSocket(int domain, int type, int protocol);
+ * void setNonBlocking(const int sock);
+ * void bindSocket(const int sock, const unsigned short port);
+ * int establishConnection(const char *address, const char *port);
+ * size_t readNBytes(const int sock, unsigned char *buf, size_t bufsize);
+ * void rawSend(const int sock, const unsigned char *buffer, size_t bufSize);
+ *
+ * DESIGNER: John Agapeyev
+ *
+ * PROGRAMMER: John Agapeyev
+ */
+/*
  *Copyright (C) 2017 John Agapeyev
  *
  *This program is free software: you can redistribute it and/or modify
@@ -46,6 +65,29 @@
 #include "socket.h"
 #include "macro.h"
 
+/*
+ * FUNCTION: createSocket
+ *
+ * DATE:
+ * Dec. 2, 2017
+ *
+ * DESIGNER:
+ * John Agapeyev
+ *
+ * PROGRAMMER:
+ * John Agapeyev
+ *
+ * INTERFACE:
+ * int createSocket(int domain, int type, int protocol);
+ *
+ * PARAMETERS:
+ * int domain - The socket domain to be created for
+ * int type - The type of socket to create
+ * int protocol - The protocol of the socket
+ *
+ * RETURNS:
+ * int - The socket file descriptor that was created
+ */
 int createSocket(int domain, int type, int protocol) {
     int sock;
     if ((sock = socket(domain, type, protocol)) == -1) {
@@ -57,6 +99,27 @@ int createSocket(int domain, int type, int protocol) {
     return sock;
 }
 
+/*
+ * FUNCTION: setNonBlocking
+ *
+ * DATE:
+ * Dec. 2, 2017
+ *
+ * DESIGNER:
+ * John Agapeyev
+ *
+ * PROGRAMMER:
+ * John Agapeyev
+ *
+ * INTERFACE:
+ * void setNonBlocking(const int sock);
+ *
+ * PARAMETERS:
+ * const int sock - The socket to set to non blocking mode
+ *
+ * RETURNS:
+ * void
+ */
 void setNonBlocking(const int sock) {
     int flags;
     if ((flags = fcntl(sock, F_GETFL, 0)) == -1){
@@ -68,6 +131,28 @@ void setNonBlocking(const int sock) {
     }
 }
 
+/*
+ * FUNCTION: bindSocket
+ *
+ * DATE:
+ * Dec. 2, 2017
+ *
+ * DESIGNER:
+ * John Agapeyev
+ *
+ * PROGRAMMER:
+ * John Agapeyev
+ *
+ * INTERFACE:
+ * void bindSocket(const int sock, const unsigned short port);
+ *
+ * PARAMETERS:
+ * const int sock - The socket to bind with
+ * const unsigned short port - The port to bind
+ *
+ * RETURNS:
+ * void
+ */
 void bindSocket(const int sock, const unsigned short port) {
     struct sockaddr_in myAddr;
     memset(&myAddr, 0, sizeof(struct sockaddr_in));
@@ -80,6 +165,28 @@ void bindSocket(const int sock, const unsigned short port) {
     }
 }
 
+/*
+ * FUNCTION: establishConnection
+ *
+ * DATE:
+ * Dec. 2, 2017
+ *
+ * DESIGNER:
+ * John Agapeyev
+ *
+ * PROGRAMMER:
+ * John Agapeyev
+ *
+ * INTERFACE:
+ * int establishConnection(const char *address, const char *port);
+ *
+ * PARAMETERS:
+ * const char *address - A string containing the domain name or ip address of the desired host
+ * const char *port - A string containing the port number to connect to
+ *
+ * RETURNS:
+ * int - The socket that is connected to the given address and port
+ */
 int establishConnection(const char *address, const char *port) {
     struct addrinfo hints;
     memset(&hints, 0, sizeof (struct addrinfo));
@@ -115,6 +222,29 @@ int establishConnection(const char *address, const char *port) {
     return sock;
 }
 
+/*
+ * FUNCTION: readNBytes
+ *
+ * DATE:
+ * Dec. 2, 2017
+ *
+ * DESIGNER:
+ * John Agapeyev
+ *
+ * PROGRAMMER:
+ * John Agapeyev
+ *
+ * INTERFACE:
+ * size_t readNBytes(const int sock, unsigned char *buf, size_t bufsize);
+ *
+ * PARAMETERS:
+ * const int sock - The socket to read from
+ * unsigned char *buf - The buffer to write to
+ * size_t bufsize - The size of the given buffer
+ *
+ * RETURNS:
+ * size_t - The amount that was read
+ */
 size_t readNBytes(const int sock, unsigned char *buf, size_t bufsize) {
     const size_t origBufSize = bufsize;
     for (;;) {
@@ -137,5 +267,48 @@ size_t readNBytes(const int sock, unsigned char *buf, size_t bufsize) {
         buf += n;
     }
     return origBufSize - bufsize;
+}
+
+/*
+ * FUNCTION: rawSend
+ *
+ * DATE:
+ * Dec. 2, 2017
+ *
+ * DESIGNER:
+ * John Agapeyev
+ *
+ * PROGRAMMER:
+ * John Agapeyev
+ *
+ * INTERFACE:
+ * void rawSend(const int sock, const unsigned char *buffer, size_t bufSize);
+ *
+ * PARAMETERS:
+ * const int sock - The socket to send data over
+ * unsigned char *buf - The buffer to send from
+ * size_t bufsize - The size of the data to send
+ *
+ * RETURNS:
+ * void
+ */
+void rawSend(const int sock, const unsigned char *buffer, size_t bufSize) {
+    ssize_t n;
+start:
+    if ((n = send(sock, buffer, bufSize, 0)) == -1) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+            //Non-blocking send would block or interrupted, try again
+            goto start;
+        } else {
+            fatal_error("Socket send");
+        }
+    }
+    assert(n >= 0);
+    if ((size_t) n < bufSize) {
+        //Didn't send all the data, try again
+        bufSize -= n;
+        buffer += n;
+        goto start;
+    }
 }
 
