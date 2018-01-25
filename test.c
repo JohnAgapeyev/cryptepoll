@@ -48,7 +48,7 @@ static bool testGetSetKey(void);
 static void *threadRoutine(void *arg);
 static bool testKeyHMAC(void);
 
-const unsigned char *testString = (unsigned char *) "This is a test";
+const unsigned char *testString = (const unsigned char *) "This is a test";
 const size_t testStringLen = 14;
 
 #define THREAD_COUNT 8
@@ -86,11 +86,13 @@ bool testEncryptDecrypt(void) {
     fillRandom(testKey, SYMMETRIC_KEY_SIZE);
     fillRandom(testIV, IV_SIZE);
 
-    unsigned char ciphertxt[testStringLen + IV_SIZE];
+    unsigned char ciphertxt[testStringLen + BLOCK_SIZE];
 
     size_t cipherLen = encrypt(testString, testStringLen, testKey, testIV, ciphertxt);
 
-    unsigned char plaintext[testStringLen];
+    unsigned char plaintext[testStringLen + 1];
+
+    assert(cipherLen <= testStringLen + BLOCK_SIZE);
 
     size_t plainLen = decrypt(ciphertxt, cipherLen, testKey, testIV, plaintext);
 
@@ -146,7 +148,7 @@ bool testECDH(void) {
 
     size_t cipherLen = encrypt(testString, testStringLen, symKey, testIV, ciphertxt);
 
-    unsigned char plaintext[testStringLen];
+    unsigned char plaintext[testStringLen + 1];
 
     size_t plainLen = decrypt(ciphertxt, cipherLen, symKey, testIV, plaintext);
 
@@ -228,16 +230,16 @@ bool testEncryptDecrypt_AAD(void) {
     fillRandom(testIV, IV_SIZE);
     fillRandom(testaad, IV_SIZE);
 
-    unsigned char ciphertxt[testStringLen + BLOCK_SIZE];
+    unsigned char ciphertxt[testStringLen];
     unsigned char tag[BLOCK_SIZE];
 
     size_t cipherLen = encrypt_aead(testString, testStringLen, testaad, IV_SIZE, testKey, testIV, ciphertxt, tag);
 
-    unsigned char plaintext[testStringLen];
+    unsigned char plaintext[testStringLen + 1];
 
     ssize_t plainLen = decrypt_aead(ciphertxt, cipherLen, testaad, IV_SIZE, testKey, testIV, tag, plaintext);
 
-    plaintext[plainLen] = '\0';
+    plaintext[testStringLen] = '\0';
 
     bool rtn = (strcmp((char *) plaintext, (char *) testString) == 0);
 

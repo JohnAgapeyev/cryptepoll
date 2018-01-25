@@ -411,6 +411,11 @@ void startServer(const int inputFD) {
 
     addEpollSocket(epollfd, listenSock, &ev);
 
+    pthread_t threads[7];
+    for (size_t i = 0; i < 7; ++i) {
+        pthread_create(&threads[i], NULL, eventLoop, &epollfd);
+    }
+
     //TODO: Create threads here instead of calling eventloop directly
     eventLoop(&epollfd);
 
@@ -575,8 +580,6 @@ void initClientStruct(struct client *newClient, int sock) {
  * HMAC is calculated over the ciphertext.
  */
 void sendEncryptedUserData(const unsigned char *mesg, const size_t mesgLen, struct client *dest) {
-    //Mesg is the plaintext, and does not include the sequence or ack, etc numbers
-    assert(mesgLen <= MAX_USER_BUFFER);
     /*
      * Mesg buffer that will be sent
      * mesgLen is self-explanatory
@@ -585,6 +588,7 @@ void sendEncryptedUserData(const unsigned char *mesg, const size_t mesgLen, stru
      * HASH_SIZE is for the HMAC
      * sizeof calls are related to header specific lengths
      */
+#if 0
     unsigned char *out = checked_malloc(sizeof(uint16_t) + mesgLen + BLOCK_SIZE + IV_SIZE + HASH_SIZE);
 
     unsigned char iv[IV_SIZE];
@@ -619,6 +623,35 @@ void sendEncryptedUserData(const unsigned char *mesg, const size_t mesgLen, stru
     OPENSSL_free(hmac);
 
     debug_print_buffer("Sending packets with contents: ", out, packetLength);
+#else
+    unsigned char *out = checked_malloc(sizeof(uint16_t) + mesgLen + IV_SIZE + TAG_SIZE);
+
+    unsigned char iv[IV_SIZE];
+    fillRandom(iv, IV_SIZE);
+
+    uint16_t packetLength = mesgLen + IV_SIZE + TAG_SIZE;
+
+    //Needs to store packet length and iv
+    unsigned char aad[sizeof(uint16_t) + IV_SIZE];
+
+    memcpy(aad, &packetLength, sizeof(uint16_t));
+    memcpy(aad + sizeof(uint16_t), iv, IV_SIZE);
+
+    //Encrypt message and place it immediately following length field
+    size_t cipherLen = encrypt_aead(mesg, mesgLen, aad, sizeof(uint16_t) + IV_SIZE, dest->sharedKey, iv, out + sizeof(uint16_t), out + sizeof(uint16_t) + mesgLen + IV_SIZE);
+
+    assert(cipherLen == mesgLen);
+
+    //Write packet length to start of packet buffer
+    memcpy(out, &packetLength, sizeof(uint16_t));
+
+    //Write the IV into the buffer
+    memcpy(out + sizeof(uint16_t) + cipherLen, iv, IV_SIZE);
+
+    debug_print("Sending packet of length: %zu\n", packetLength);
+    debug_print_buffer("Sent tag: ", out + sizeof(uint16_t) + mesgLen + IV_SIZE, TAG_SIZE);
+    debug_print_buffer("Sending packets with contents: ", out, packetLength);
+#endif
 
     //Write the packet to the socket
     rawSend(dest->socket, out, packetLength);
@@ -654,6 +687,7 @@ void sendEncryptedUserData(const unsigned char *mesg, const size_t mesgLen, stru
  * No response is given for an invalid HMAC.
  */
 void decryptReceivedUserData(const unsigned char *mesg, const size_t mesgLen, struct client *src) {
+#if 0
     assert(mesgLen > IV_SIZE + HASH_SIZE);
 
     debug_print_buffer("Received hmac: ", mesg + mesgLen - HASH_SIZE, HASH_SIZE);
@@ -670,6 +704,28 @@ void decryptReceivedUserData(const unsigned char *mesg, const size_t mesgLen, st
     process_packet(plain, plainLen, src);
 
     free(plain);
+#else
+    printf("%zu\n", mesgLen);
+    assert(mesgLen > IV_SIZE + TAG_SIZE);
+
+    debug_print_buffer("Received tag: ", mesg + mesgLen - TAG_SIZE, TAG_SIZE);
+
+    unsigned char aad[sizeof(uint16_t) + IV_SIZE];
+
+    memcpy(aad, mesg, sizeof(uint16_t));
+    memcpy(aad + sizeof(uint16_t), mesg + mesgLen - TAG_SIZE - IV_SIZE, IV_SIZE);
+
+    unsigned char *plain = checked_malloc(mesgLen);
+    ssize_t plainLen = decrypt_aead(mesg + sizeof(uint16_t), mesgLen - TAG_SIZE - IV_SIZE - sizeof(uint16_t), aad, sizeof(uint16_t) + IV_SIZE, src->sharedKey, mesg + mesgLen - TAG_SIZE - IV_SIZE, mesg + mesgLen - TAG_SIZE, plain);
+
+    if (plainLen == -1) {
+        fprintf(stderr, "Packet tag failed to verify, dropping...\n");
+    } else {
+        process_packet(plain, plainLen, src);
+    }
+
+    free(plain);
+#endif
 }
 
 /*

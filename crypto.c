@@ -699,7 +699,7 @@ size_t encrypt_aead(const unsigned char *plaintext, size_t plain_len, const unsi
 
     checkCryptoAPICall(EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL));
 
-    checkCryptoAPICall(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, IV_SIZE, NULL));
+    checkCryptoAPICall(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, TAG_SIZE, NULL));
 
     checkCryptoAPICall(EVP_EncryptInit_ex(ctx, NULL, NULL, key, iv));
 
@@ -713,7 +713,7 @@ size_t encrypt_aead(const unsigned char *plaintext, size_t plain_len, const unsi
 
     ciphertextlen += len;
 
-    checkCryptoAPICall(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, IV_SIZE, tag));
+    checkCryptoAPICall(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, TAG_SIZE, tag));
 
     EVP_CIPHER_CTX_free(ctx);
 
@@ -723,14 +723,14 @@ size_t encrypt_aead(const unsigned char *plaintext, size_t plain_len, const unsi
 }
 
 ssize_t decrypt_aead(const unsigned char *ciphertext, size_t cipher_len, const unsigned char *aad, const size_t aad_len, const unsigned char *key,
-        const unsigned char *iv, unsigned char *tag, unsigned char *plaintext) {
+        const unsigned char *iv, const unsigned char *tag, unsigned char *plaintext) {
 
     EVP_CIPHER_CTX *ctx;
     nullCheckCryptoAPICall(ctx = EVP_CIPHER_CTX_new());
 
     checkCryptoAPICall(EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL));
 
-    checkCryptoAPICall(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, IV_SIZE, NULL));
+    checkCryptoAPICall(EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, TAG_SIZE, NULL));
 
     checkCryptoAPICall(EVP_DecryptInit_ex(ctx, NULL, NULL, key, iv));
 
@@ -741,7 +741,7 @@ ssize_t decrypt_aead(const unsigned char *ciphertext, size_t cipher_len, const u
 
     int plaintextlen = len;
 
-    if (!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, IV_SIZE, tag)) {
+    if (!EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, TAG_SIZE, (unsigned char *) tag)) {
         libcrypto_error();
     }
 
