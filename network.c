@@ -583,47 +583,10 @@ void sendEncryptedUserData(const unsigned char *mesg, const size_t mesgLen, stru
     /*
      * Mesg buffer that will be sent
      * mesgLen is self-explanatory
-     * BLOCK_SIZE since encryption can pad up to one block length
      * IV_SIZE is self-explanatory
-     * HASH_SIZE is for the HMAC
+     * TAG_SIZE is for the GCM tag
      * sizeof calls are related to header specific lengths
      */
-#if 0
-    unsigned char *out = checked_malloc(sizeof(uint16_t) + mesgLen + BLOCK_SIZE + IV_SIZE + HASH_SIZE);
-
-    unsigned char iv[IV_SIZE];
-    fillRandom(iv, IV_SIZE);
-
-    //Encrypt message and place it immediately following length field
-    size_t cipherLen = encrypt(mesg, mesgLen, dest->sharedKey, iv, out + sizeof(uint16_t));
-
-    assert(cipherLen <= mesgLen + BLOCK_SIZE);
-
-    uint16_t packetLength = cipherLen + IV_SIZE + HASH_SIZE + sizeof(uint16_t);
-    //Write packet length to start of packet buffer
-    memcpy(out, &packetLength, sizeof(uint16_t));
-
-    //Write the IV into the buffer
-    memcpy(out + sizeof(uint16_t) + cipherLen, iv, IV_SIZE);
-
-    //Index of the hmac start in the packet buffer
-    const size_t hmacIndex = sizeof(uint16_t) + cipherLen + IV_SIZE;
-
-    size_t hmacLen = 0;
-    //Generate HMAC over the ciphertext, packet length, and IV
-    unsigned char *hmac = generateHMAC_Buffer(out, hmacIndex, &hmacLen, dest->sharedKey, SYMMETRIC_KEY_SIZE);
-
-    assert(hmacLen <= EVP_MAX_MD_SIZE);
-    assert(hmacLen == HASH_SIZE);
-
-    debug_print_buffer("Sent hmac: ", hmac, HASH_SIZE);
-
-    //Write the hmac into the packet buffer
-    memcpy(out + hmacIndex, hmac, hmacLen);
-    OPENSSL_free(hmac);
-
-    debug_print_buffer("Sending packets with contents: ", out, packetLength);
-#else
     unsigned char *out = checked_malloc(sizeof(uint16_t) + mesgLen + IV_SIZE + TAG_SIZE);
 
     unsigned char iv[IV_SIZE];
@@ -638,7 +601,8 @@ void sendEncryptedUserData(const unsigned char *mesg, const size_t mesgLen, stru
     memcpy(aad + sizeof(uint16_t), iv, IV_SIZE);
 
     //Encrypt message and place it immediately following length field
-    size_t cipherLen = encrypt_aead(mesg, mesgLen, aad, sizeof(uint16_t) + IV_SIZE, dest->sharedKey, iv, out + sizeof(uint16_t), out + sizeof(uint16_t) + mesgLen + IV_SIZE);
+    size_t cipherLen = encrypt_aead(mesg, mesgLen, aad, sizeof(uint16_t) + IV_SIZE, dest->sharedKey, iv,
+            out + sizeof(uint16_t), out + sizeof(uint16_t) + mesgLen + IV_SIZE);
 
     assert(cipherLen == mesgLen);
 
@@ -648,13 +612,12 @@ void sendEncryptedUserData(const unsigned char *mesg, const size_t mesgLen, stru
     //Write the IV into the buffer
     memcpy(out + sizeof(uint16_t) + cipherLen, iv, IV_SIZE);
 
-    debug_print("Sending packet of length: %zu\n", packetLength);
+    debug_print("Sending packet of length: %zu\n", packetLength + sizeof(uint16_t));
     debug_print_buffer("Sent tag: ", out + sizeof(uint16_t) + mesgLen + IV_SIZE, TAG_SIZE);
-    debug_print_buffer("Sending packets with contents: ", out, packetLength);
-#endif
+    debug_print_buffer("Sending packets with contents: ", out, packetLength + sizeof(uint16_t));
 
     //Write the packet to the socket
-    rawSend(dest->socket, out, packetLength);
+    rawSend(dest->socket, out, packetLength + sizeof(uint16_t));
 
     free(out);
 }
@@ -687,36 +650,17 @@ void sendEncryptedUserData(const unsigned char *mesg, const size_t mesgLen, stru
  * No response is given for an invalid HMAC.
  */
 void decryptReceivedUserData(const unsigned char *mesg, const size_t mesgLen, struct client *src) {
-#if 0
-    assert(mesgLen > IV_SIZE + HASH_SIZE);
-
-    debug_print_buffer("Received hmac: ", mesg + mesgLen - HASH_SIZE, HASH_SIZE);
-
-    bool validPacket = verifyHMAC_Buffer(mesg, mesgLen - HASH_SIZE, mesg + mesgLen - HASH_SIZE, HASH_SIZE, src->sharedKey, SYMMETRIC_KEY_SIZE);
-    if (!validPacket) {
-        fprintf(stderr, "Packet HMAC failed to verify, dropping...\n");
-        return;
-    }
-
-    unsigned char *plain = checked_malloc(mesgLen);
-    size_t plainLen = decrypt(mesg + sizeof(uint16_t), mesgLen - HASH_SIZE - IV_SIZE - sizeof(uint16_t), src->sharedKey, mesg + mesgLen - HASH_SIZE - IV_SIZE, plain);
-
-    process_packet(plain, plainLen, src);
-
-    free(plain);
-#else
-    printf("%zu\n", mesgLen);
     assert(mesgLen > IV_SIZE + TAG_SIZE);
 
     debug_print_buffer("Received tag: ", mesg + mesgLen - TAG_SIZE, TAG_SIZE);
 
     unsigned char aad[sizeof(uint16_t) + IV_SIZE];
-
     memcpy(aad, mesg, sizeof(uint16_t));
     memcpy(aad + sizeof(uint16_t), mesg + mesgLen - TAG_SIZE - IV_SIZE, IV_SIZE);
 
     unsigned char *plain = checked_malloc(mesgLen);
-    ssize_t plainLen = decrypt_aead(mesg + sizeof(uint16_t), mesgLen - TAG_SIZE - IV_SIZE - sizeof(uint16_t), aad, sizeof(uint16_t) + IV_SIZE, src->sharedKey, mesg + mesgLen - TAG_SIZE - IV_SIZE, mesg + mesgLen - TAG_SIZE, plain);
+    ssize_t plainLen = decrypt_aead(mesg + sizeof(uint16_t), mesgLen - TAG_SIZE - IV_SIZE - sizeof(uint16_t), aad, sizeof(uint16_t) + IV_SIZE,
+            src->sharedKey, mesg + mesgLen - TAG_SIZE - IV_SIZE, mesg + mesgLen - TAG_SIZE, plain);
 
     if (plainLen == -1) {
         fprintf(stderr, "Packet tag failed to verify, dropping...\n");
@@ -725,7 +669,6 @@ void decryptReceivedUserData(const unsigned char *mesg, const size_t mesgLen, st
     }
 
     free(plain);
-#endif
 }
 
 /*
@@ -882,15 +825,15 @@ void handleIncomingPacket(struct client *src) {
         memcpy(buffer, &sizeToRead, sizeof(uint16_t));
         {
             unsigned char *tmpBuf = buffer + sizeof(uint16_t);
-            uint16_t tmpSize = sizeToRead - sizeof(uint16_t);
+            uint16_t tmpSize = sizeToRead;
 
             int len;
             for (;;) {
                 len = readNBytes(sock, tmpBuf, tmpSize);
                 assert(len <= tmpSize);
                 if (len == tmpSize) {
-                    debug_print_buffer("Raw Received packet: ", buffer, sizeToRead);
-                    decryptReceivedUserData(buffer, sizeToRead, src);
+                    debug_print_buffer("Raw Received packet: ", buffer, sizeToRead + sizeof(uint16_t));
+                    decryptReceivedUserData(buffer, sizeToRead + sizeof(uint16_t), src);
                     break;
                 }
                 //Len must be less than tmpSize
