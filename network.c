@@ -57,6 +57,7 @@ EVP_PKEY *LongTermSigningKey = NULL;
 bool isServer;
 struct client *clientList;
 size_t clientCount;
+size_t clientMax;
 unsigned short port;
 int listenSock;
 
@@ -88,6 +89,7 @@ void network_init(void) {
     LongTermSigningKey = generateECKey();
     clientList = checked_calloc(10, sizeof(struct client));
     clientCount = 1;
+    clientMax = 10;
     pthread_mutex_init(&clientLock, NULL);
 }
 
@@ -505,20 +507,23 @@ void *eventLoop(void *epollfd) {
 size_t addClient(int sock) {
     pthread_mutex_lock(&clientLock);
     bool foundEntry = false;
-    for (size_t i = 0; i < clientCount; ++i) {
+    for (size_t i = 0; i < clientMax; ++i) {
         if (clientList[i].enabled == false) {
             initClientStruct(clientList + i, sock);
-            ++clientCount;
+            assert(clientList[i].enabled);
             foundEntry = true;
-            break;
+            ++clientCount;
+            pthread_mutex_unlock(&clientLock);
+            return i;
         }
     }
     if (!foundEntry) {
-        clientList = checked_realloc(clientList, sizeof(struct client) * clientCount * 2);
-        memset(clientList + clientCount, 0, sizeof(struct client) * clientCount);
-        initClientStruct(clientList + clientCount, sock);
-        ++clientCount;
+        clientList = checked_realloc(clientList, sizeof(struct client) * clientMax * 2);
+        memset(clientList + clientMax, 0, sizeof(struct client) * clientMax);
+        initClientStruct(clientList + clientMax, sock);
+        clientMax *= 2;
     }
+    ++clientCount;
     pthread_mutex_unlock(&clientLock);
     //Subtract 2: 1 for incremented client count, 1 for dummy value
     return clientCount - 2;
@@ -580,7 +585,7 @@ void initClientStruct(struct client *newClient, int sock) {
  * NOTES:
  * This function transforms the plaintext mesg into its ciphertext, and handles appending control values.
  * Packet structure is as follows:
- * Packet Length : Packet Type : Sequence Number : Ack Number : Window Size (unused) : plaintext : IV : HMAC
+ * Packet Length : plaintext : IV : TAG
  * All values excluding Packet Length, IV, and HMAC are encrypted into a single ciphertext.
  * HMAC is calculated over the ciphertext.
  */
