@@ -63,6 +63,7 @@
 #include <getopt.h>
 #include <assert.h>
 #include <sys/socket.h>
+#include <sys/resource.h>
 #include <arpa/inet.h>
 #include "main.h"
 #include "macro.h"
@@ -202,6 +203,23 @@ int main(int argc, char **argv) {
         perror("strtoul");
         return EXIT_FAILURE;
     }
+    struct rlimit limit;
+    /* Get max number of files. */
+    if (getrlimit(RLIMIT_NOFILE, &limit) != 0) {
+        printf("getrlimit() failed with errno=%d\n", errno);
+        exit(0);
+    }
+
+    limit.rlim_max = USHRT_MAX;
+    limit.rlim_cur = limit.rlim_max;
+
+    printf("Setting soft limit: %d\n", limit.rlim_cur);
+
+    if (setrlimit(RLIMIT_NOFILE, &limit) != 0) {
+        printf("setrlimit() failed with errno=%d\n", errno);
+        exit(0);
+    }
+
 
     if (isServer) {
         listenSock = createSocket(AF_INET, SOCK_STREAM, 0);

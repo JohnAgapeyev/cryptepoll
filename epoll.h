@@ -59,6 +59,7 @@
 
 int createEpollFd(void);
 void addEpollSocket(const int epollfd, const int sock, struct epoll_event *ev);
+void removeEpollSocket(const int epollfd, const int sock);
 int waitForEpollEvent(const int epollfd, struct epoll_event *events);
 size_t singleEpollReadInstance(const int sock, unsigned char *buffer, const size_t bufSize);
 

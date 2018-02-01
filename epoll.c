@@ -115,6 +115,12 @@ void addEpollSocket(const int epollfd, const int sock, struct epoll_event *ev) {
     }
 }
 
+void removeEpollSocket(const int epollfd, const int sock) {
+    if (epoll_ctl(epollfd, EPOLL_CTL_DEL, sock, NULL) == -1) {
+        fatal_error("epoll_ctl");
+    }
+}
+
 /*
  * FUNCTION: waitForEpollEvent
  *

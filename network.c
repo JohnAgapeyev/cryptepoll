@@ -196,7 +196,7 @@ void process_packet(const unsigned char * const buffer, const size_t bufsize, st
  * All ephemeral keys are validated with an HMAC generated with the previously sent signing key.
  * Application relies on Trust-On-First-Use policy, so no authentication of keys is performed.
  */
-unsigned char *exchangeKeys(const int * const sock) {
+unsigned char *exchangeKeys(struct client *clientEntry) {
     size_t pubKeyLen;
     unsigned char *signPubKey = getPublicKey(LongTermSigningKey, &pubKeyLen);
 
@@ -209,17 +209,15 @@ unsigned char *exchangeKeys(const int * const sock) {
 
     unsigned char *sharedSecret = NULL;
 
-    struct client *clientEntry = container_entry(sock, struct client, socket);
-
     if (isServer) {
-        sendSigningKey(*sock, signPubKey, pubKeyLen);
-        sendEphemeralKey(*sock, ephemeralPubKey, ephemeralPubKeyLen, hmac, hmaclen);
-        readSigningKey(*sock, clientEntry, pubKeyLen);
+        sendSigningKey(clientEntry->socket, signPubKey, pubKeyLen);
+        sendEphemeralKey(clientEntry->socket, ephemeralPubKey, ephemeralPubKeyLen, hmac, hmaclen);
+        readSigningKey(clientEntry->socket, clientEntry, pubKeyLen);
 
         uint16_t packetLength = ephemeralPubKeyLen + hmaclen + sizeof(uint16_t);
         unsigned char *mesgBuffer = checked_malloc(packetLength);
 
-        if (!receiveAndVerifyKey(sock, mesgBuffer, packetLength, ephemeralPubKeyLen, hmaclen)) {
+        if (!receiveAndVerifyKey(&clientEntry->socket, mesgBuffer, packetLength, ephemeralPubKeyLen, hmaclen)) {
             fatal_error("HMAC verification");
         }
 
@@ -230,20 +228,20 @@ unsigned char *exchangeKeys(const int * const sock) {
         EVP_PKEY_free(clientPubKey);
         free(mesgBuffer);
     } else {
-        readSigningKey(*sock, clientEntry, pubKeyLen);
+        readSigningKey(clientEntry->socket, clientEntry, pubKeyLen);
 
         uint16_t packetLength = ephemeralPubKeyLen + hmaclen + sizeof(uint16_t);
 
         unsigned char *mesgBuffer = checked_malloc(packetLength);
 
-        if (!receiveAndVerifyKey(sock, mesgBuffer, packetLength, ephemeralPubKeyLen, hmaclen)) {
+        if (!receiveAndVerifyKey(&clientEntry->socket, mesgBuffer, packetLength, ephemeralPubKeyLen, hmaclen)) {
             fatal_error("HMAC verification");
         }
 
         EVP_PKEY *serverPubKey = setPublicKey(mesgBuffer + sizeof(uint16_t), ephemeralPubKeyLen);
 
-        sendSigningKey(*sock, signPubKey, pubKeyLen);
-        sendEphemeralKey(*sock, ephemeralPubKey, ephemeralPubKeyLen, hmac, hmaclen);
+        sendSigningKey(clientEntry->socket, signPubKey, pubKeyLen);
+        sendEphemeralKey(clientEntry->socket, ephemeralPubKey, ephemeralPubKeyLen, hmac, hmaclen);
 
         sharedSecret = getSharedSecret(ephemeralKey, serverPubKey);
 
@@ -466,8 +464,7 @@ void *eventLoop(void *epollfd) {
         assert(n != -1);
         for (int i = 0; i < n; ++i) {
             if (eventList[i].events & EPOLLERR || eventList[i].events & EPOLLHUP) {
-                int sock = (eventList[i].data.ptr) ? ((struct client *) eventList[i].data.ptr)->socket : listenSock;
-                handleSocketError(sock);
+                handleSocketError(efd, eventList[i].data.ptr);
             } else if (eventList[i].events & EPOLLIN) {
                 if (eventList[i].data.ptr) {
                     //Regular read connection
@@ -720,7 +717,7 @@ void handleIncomingConnection(const int efd) {
 
         size_t newClientIndex = addClient(sock);
 
-        unsigned char *secretKey = exchangeKeys(&clientList[newClientIndex].socket);
+        unsigned char *secretKey = exchangeKeys(clientList + newClientIndex);
         debug_print_buffer("Shared secret: ", secretKey, HASH_SIZE);
 
         struct epoll_event ev;
@@ -752,9 +749,15 @@ void handleIncomingConnection(const int efd) {
  * RETURNS:
  * void
  */
-void handleSocketError(const int sock) {
+void handleSocketError(const int epollfd, struct client *entry) {
+    int sock = (entry) ? entry->socket : listenSock;
     fprintf(stderr, "Socket error on socket %d\n", sock);
+
+    removeEpollSocket(epollfd, sock);
+
     close(sock);
+
+    entry->enabled = false;
 }
 
 /*

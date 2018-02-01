@@ -65,7 +65,7 @@ extern int listenSock;
 void network_init(void);
 void network_cleanup(void);
 void process_packet(const unsigned char * const buffer, const size_t bufsize, struct client *src);
-unsigned char *exchangeKeys(const int * const sock);
+unsigned char *exchangeKeys(struct client *clientEntry);
 bool receiveAndVerifyKey(const int * const sock, unsigned char *buffer, const size_t bufSize, const size_t keyLen, const size_t hmacLen);
 void startClient(const char *ip, const char *portString, int inputFD);
 void startServer(const int inputFD);
@@ -76,7 +76,7 @@ void sendEncryptedUserData(const unsigned char *mesg, const size_t mesgLen, stru
 void decryptReceivedUserData(const unsigned char *mesg, const size_t mesgLen, struct client *src);
 void sendReliablePacket(const unsigned char *mesg, const size_t mesgLen, struct client *dest);
 void handleIncomingConnection(const int efd);
-void handleSocketError(const int sock);
+void handleSocketError(const int epollfd, struct client *entry);
 void handleIncomingPacket(struct client *src);
 uint16_t readPacketLength(const int sock);
 void sendSigningKey(const int sock, const unsigned char *key, const size_t keyLen);
