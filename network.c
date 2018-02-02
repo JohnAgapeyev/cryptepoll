@@ -348,9 +348,9 @@ void startClient(const char *ip, const char *portString, int inputFD) {
 
     size_t clientNum = addClient(serverSock);
 
-    struct client *serverEntry = &clientList[clientNum];
+    struct client *serverEntry = clientList[clientNum];
 
-    unsigned char *sharedSecret = exchangeKeys(&serverEntry->socket);
+    unsigned char *sharedSecret = exchangeKeys(serverEntry);
 
     debug_print_buffer("Shared secret: ", sharedSecret, SYMMETRIC_KEY_SIZE);
 
