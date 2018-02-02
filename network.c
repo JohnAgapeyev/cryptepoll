@@ -55,7 +55,7 @@
 
 EVP_PKEY *LongTermSigningKey = NULL;
 bool isServer;
-struct client *clientList;
+struct client **clientList;
 size_t clientCount;
 size_t clientMax;
 unsigned short port;
@@ -87,7 +87,7 @@ pthread_mutex_t clientLock;
 void network_init(void) {
     initCrypto();
     LongTermSigningKey = generateECKey();
-    clientList = checked_calloc(10, sizeof(struct client));
+    clientList = checked_calloc(10, sizeof(struct client *));
     clientCount = 1;
     clientMax = 10;
     pthread_mutex_init(&clientLock, NULL);
@@ -115,9 +115,12 @@ void network_cleanup(void) {
     if (LongTermSigningKey) {
         EVP_PKEY_free(LongTermSigningKey);
     }
-    for (size_t i = 0; i< clientCount; ++i) {
-        OPENSSL_clear_free(clientList[i].sharedKey, SYMMETRIC_KEY_SIZE);
-        EVP_PKEY_free(clientList[i].signingKey);
+    for (size_t i = 0; i < clientMax; ++i) {
+        if (clientList[i]) {
+            OPENSSL_clear_free(clientList[i]->sharedKey, SYMMETRIC_KEY_SIZE);
+            EVP_PKEY_free(clientList[i]->signingKey);
+            free(clientList[i]);
+        }
     }
     pthread_mutex_destroy(&clientLock);
     free(clientList);
@@ -505,9 +508,18 @@ size_t addClient(int sock) {
     pthread_mutex_lock(&clientLock);
     bool foundEntry = false;
     for (size_t i = 0; i < clientMax; ++i) {
-        if (clientList[i].enabled == false) {
-            initClientStruct(clientList + i, sock);
-            assert(clientList[i].enabled);
+        if (clientList[i] && clientList[i]->enabled == false) {
+            initClientStruct(clientList[i], sock);
+            assert(clientList[i]->enabled);
+            foundEntry = true;
+            ++clientCount;
+            pthread_mutex_unlock(&clientLock);
+            return i;
+        }
+        if (clientList[i] == NULL) {
+            clientList[i] = checked_malloc(sizeof(struct client));
+            initClientStruct(clientList[i], sock);
+            assert(clientList[i]->enabled);
             foundEntry = true;
             ++clientCount;
             pthread_mutex_unlock(&clientLock);
@@ -515,9 +527,10 @@ size_t addClient(int sock) {
         }
     }
     if (!foundEntry) {
-        clientList = checked_realloc(clientList, sizeof(struct client) * clientMax * 2);
-        memset(clientList + clientMax, 0, sizeof(struct client) * clientMax);
-        initClientStruct(clientList + clientMax, sock);
+        clientList = checked_realloc(clientList, sizeof(struct client *) * clientMax * 2);
+        memset(clientList + clientMax, 0, sizeof(struct client *) * clientMax);
+        clientList[clientMax] = checked_malloc(sizeof(struct client));
+        initClientStruct(clientList[clientMax], sock);
         clientMax *= 2;
     }
     ++clientCount;
@@ -717,12 +730,12 @@ void handleIncomingConnection(const int efd) {
 
         size_t newClientIndex = addClient(sock);
 
-        unsigned char *secretKey = exchangeKeys(clientList + newClientIndex);
+        unsigned char *secretKey = exchangeKeys(clientList[newClientIndex]);
         debug_print_buffer("Shared secret: ", secretKey, HASH_SIZE);
 
         struct epoll_event ev;
         ev.events = EPOLLIN | EPOLLET | EPOLLEXCLUSIVE;
-        ev.data.ptr = &clientList[newClientIndex];
+        ev.data.ptr = clientList[newClientIndex];
 
         addEpollSocket(efd, sock, &ev);
     }

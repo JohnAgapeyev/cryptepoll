@@ -57,7 +57,7 @@ struct client {
 
 extern bool isServer;
 extern EVP_PKEY *LongTermSigningKey;
-extern struct client *clientList;
+extern struct client **clientList;
 extern size_t clientCount;
 extern unsigned short port;
 extern int listenSock;
