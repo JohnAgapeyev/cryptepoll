@@ -357,7 +357,7 @@ void startClient(const char *ip, const char *portString, int inputFD) {
     int epollfd = createEpollFd();
 
     struct epoll_event ev;
-    ev.events = EPOLLIN | EPOLLET | EPOLLEXCLUSIVE;
+    ev.events = EPOLLIN | EPOLLET | EPOLLRDHUP;
     ev.data.ptr = serverEntry;
 
     addEpollSocket(epollfd, serverSock, &ev);
@@ -365,9 +365,9 @@ void startClient(const char *ip, const char *portString, int inputFD) {
     pthread_t readThread;
     pthread_create(&readThread, NULL, eventLoop, &epollfd);
 
-    unsigned char input[4096];
+    unsigned char input[MAX_INPUT_SIZE];
     while(isRunning) {
-        int n = read(inputFD, input, 4096);
+        int n = read(inputFD, input, MAX_INPUT_SIZE);
         if (n > 0) {
             sendEncryptedUserData(input, n, serverEntry);
         } else {
@@ -375,6 +375,17 @@ void startClient(const char *ip, const char *portString, int inputFD) {
             break;
         }
     }
+    //Stop running if we broke out due to reading zero bytes
+    isRunning = false;
+
+    pthread_join(readThread, NULL);
+
+    //I don't like this, but the server errors trying to echo if we don't
+    //Maybe when we change how the sending is done, this will stop being an issue
+    sleep(1);
+
+    shutdown(serverSock, SHUT_RDWR);
+    close(serverSock);
 
 clientCleanup:
     close(epollfd);
@@ -412,7 +423,7 @@ void startServer(const int inputFD) {
     int epollfd = createEpollFd();
 
     struct epoll_event ev;
-    ev.events = EPOLLIN | EPOLLET | EPOLLEXCLUSIVE;
+    ev.events = EPOLLIN | EPOLLET;
     ev.data.ptr = NULL;
 
     setNonBlocking(listenSock);
@@ -466,7 +477,7 @@ void *eventLoop(void *epollfd) {
         //n can't be -1 because the handling for that is done in waitForEpollEvent
         assert(n != -1);
         for (int i = 0; i < n; ++i) {
-            if (eventList[i].events & EPOLLERR || eventList[i].events & EPOLLHUP) {
+            if (eventList[i].events & EPOLLERR || eventList[i].events & EPOLLHUP || eventList[i].events & EPOLLRDHUP) {
                 handleSocketError(efd, eventList[i].data.ptr);
             } else if (eventList[i].events & EPOLLIN) {
                 if (eventList[i].data.ptr) {
@@ -734,7 +745,7 @@ void handleIncomingConnection(const int efd) {
         debug_print_buffer("Shared secret: ", secretKey, HASH_SIZE);
 
         struct epoll_event ev;
-        ev.events = EPOLLIN | EPOLLET | EPOLLEXCLUSIVE;
+        ev.events = EPOLLIN | EPOLLET | EPOLLRDHUP;
         ev.data.ptr = clientList[newClientIndex];
 
         addEpollSocket(efd, sock, &ev);
@@ -764,7 +775,7 @@ void handleIncomingConnection(const int efd) {
  */
 void handleSocketError(const int epollfd, struct client *entry) {
     int sock = (entry) ? entry->socket : listenSock;
-    fprintf(stderr, "Socket error on socket %d\n", sock);
+    fprintf(stderr, "Disconnection/error on socket %d\n", sock);
 
     removeEpollSocket(epollfd, sock);
 
@@ -809,7 +820,8 @@ uint16_t readPacketLength(const int sock) {
     }
     assert(n == 2);
 
-    assert(sizeToRead < MAX_PACKET_SIZE + sizeof(uint16_t));
+    printf("Size to read: %zu %zu\n", sizeToRead, MAX_PACKET_SIZE);
+    assert(sizeToRead <= MAX_PACKET_SIZE);
     assert(sizeToRead != 0);
 
     return sizeToRead;

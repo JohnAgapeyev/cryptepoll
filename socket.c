@@ -254,8 +254,6 @@ size_t readNBytes(const int sock, unsigned char *buf, size_t bufsize) {
                 //Nonblocking read and no more data so do nothing
             } else {
                 perror("Socket read");
-                printf("Socket: %d\n", sock);
-                //close(sock);
             }
             return origBufSize - bufsize;
         }

@@ -38,7 +38,9 @@
 
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <openssl/evp.h>
+#include "crypto.h"
 
 struct client {
     int socket;
@@ -49,11 +51,13 @@ struct client {
 
 /*
  * Length is 2 bytes
- * Ciphertext can be max 4096
  * IV is 16
  * Tag size is 16
+ * Remainder is text
+ * Want the outgoing packet to be 4096 max, aka page size
  */
-#define MAX_PACKET_SIZE 4096 + IV_SIZE + TAG_SIZE + sizeof(uint16_t)
+#define MAX_INPUT_SIZE 4096 - IV_SIZE - TAG_SIZE - sizeof(uint16_t)
+#define MAX_PACKET_SIZE MAX_INPUT_SIZE + IV_SIZE + TAG_SIZE + sizeof(uint16_t)
 
 extern bool isServer;
 extern EVP_PKEY *LongTermSigningKey;

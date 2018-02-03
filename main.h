@@ -60,9 +60,9 @@
 #define MAIN_H
 
 #include <signal.h>
+#include "network.h"
 
-//Plaintext must be max 1008 to fit within 1024 bytes, and 7 of those bytes are header
-#define MAX_USER_BUFFER 1001
+#define MAX_USER_BUFFER MAX_INPUT_SIZE
 
 volatile sig_atomic_t isRunning;
 
