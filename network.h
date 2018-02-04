@@ -80,7 +80,7 @@ void sendEncryptedUserData(const unsigned char *mesg, const size_t mesgLen, stru
 void decryptReceivedUserData(const unsigned char *mesg, const size_t mesgLen, struct client *src);
 void sendReliablePacket(const unsigned char *mesg, const size_t mesgLen, struct client *dest);
 void handleIncomingConnection(const int efd);
-void handleSocketError(const int epollfd, struct client *entry);
+void handleSocketError(struct client *entry);
 void handleIncomingPacket(struct client *src);
 uint16_t readPacketLength(const int sock);
 void sendSigningKey(const int sock, const unsigned char *key, const size_t keyLen);

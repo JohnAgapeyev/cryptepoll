@@ -478,7 +478,7 @@ void *eventLoop(void *epollfd) {
         assert(n != -1);
         for (int i = 0; i < n; ++i) {
             if (eventList[i].events & EPOLLERR || eventList[i].events & EPOLLHUP || eventList[i].events & EPOLLRDHUP) {
-                handleSocketError(efd, eventList[i].data.ptr);
+                handleSocketError(eventList[i].data.ptr);
             } else if (eventList[i].events & EPOLLIN) {
                 if (eventList[i].data.ptr) {
                     //Regular read connection
@@ -773,7 +773,7 @@ void handleIncomingConnection(const int efd) {
  * RETURNS:
  * void
  */
-void handleSocketError(const int epollfd, struct client *entry) {
+void handleSocketError(struct client *entry) {
     int sock = (entry) ? entry->socket : listenSock;
     fprintf(stderr, "Disconnection/error on socket %d\n", sock);
 
