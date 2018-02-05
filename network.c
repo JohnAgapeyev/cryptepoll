@@ -523,7 +523,6 @@ size_t addClient(int sock) {
             initClientStruct(clientList[i], sock);
             assert(clientList[i]->enabled);
             foundEntry = true;
-            ++clientCount;
             pthread_mutex_unlock(&clientLock);
             return i;
         }

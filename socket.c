@@ -294,12 +294,19 @@ size_t readNBytes(const int sock, unsigned char *buf, size_t bufsize) {
 void rawSend(const int sock, const unsigned char *buffer, size_t bufSize) {
     ssize_t n;
 start:
-    if ((n = send(sock, buffer, bufSize, 0)) == -1) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
-            //Non-blocking send would block or interrupted, try again
-            goto start;
-        } else {
-            fatal_error("Socket send");
+    if ((n = send(sock, buffer, bufSize, MSG_NOSIGNAL)) == -1) {
+        switch(errno) {
+            case EAGAIN:
+                //Intentional fallthrough
+            case EINTR:
+                goto start;
+                break;
+            case EPIPE:
+                //Other end has left us, do nothing
+                return;
+            default:
+                fatal_error("Socket send");
+                break;
         }
     }
     assert(n >= 0);
